@@ -15,7 +15,9 @@ private let now = Date(timeIntervalSince1970: 1_781_100_000) // fixed reference
 @Test func weekResetUsesWeekdayWhenFarAway() {
     let far = now.addingTimeInterval(3 * 24 * 3600)
     let text = CountdownFormatter.weekReset(far, now: now)
+    // Build expected string with en_US_POSIX to match the formatter's locked locale.
     let weekday = DateFormatter()
+    weekday.locale = Locale(identifier: "en_US_POSIX")
     weekday.dateFormat = "EEE HH:mm"
     #expect(text == "resets \(weekday.string(from: far))")
     // within 24h falls back to countdown style
@@ -23,6 +25,14 @@ private let now = Date(timeIntervalSince1970: 1_781_100_000) // fixed reference
     #expect(CountdownFormatter.weekReset(near, now: now).hasPrefix("resets in"))
     // nil
     #expect(CountdownFormatter.weekReset(nil, now: now) == "—")
+}
+
+@Test func remainingSurvivesAbsurdDates() {
+    let absurdNow = Date(timeIntervalSince1970: 1_781_100_000)
+    let absurd = Date(timeIntervalSince1970: 1e25)
+    _ = CountdownFormatter.remaining(until: absurd, now: absurdNow) // must not trap
+    // Date(timeIntervalSince1970: .nan) produces a date whose timeIntervalSince returns NaN.
+    #expect(CountdownFormatter.remaining(until: Date(timeIntervalSince1970: .nan), now: absurdNow) == "—")
 }
 
 @Test func updatedAgoFormats() {

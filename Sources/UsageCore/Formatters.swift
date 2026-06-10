@@ -13,8 +13,13 @@ public enum BarTone: Equatable, Sendable {
 public enum CountdownFormatter {
     // Cached: the hover ticker calls weekReset every second. DateFormatter is
     // thread-safe and read-only after init.
+    // en_US_POSIX locale locks the hour format to HH regardless of the user's
+    // 12/24-hour system preference (Apple QA1480). Timezone is captured per
+    // format-call from the formatter's current default; a system timezone change
+    // mid-run may show stale weekday text until restart (accepted limitation).
     private nonisolated(unsafe) static let weekResetFormatter: DateFormatter = {
         let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
         f.dateFormat = "EEE HH:mm"
         return f
     }()
@@ -22,7 +27,10 @@ public enum CountdownFormatter {
     /// "resets in 2h 13m" / "resets in 45m" / "resets in <1m" / "resetting…" / "—"
     public static func remaining(until reset: Date?, now: Date) -> String {
         guard let reset else { return "—" }
-        let s = reset.timeIntervalSince(now)
+        let raw = reset.timeIntervalSince(now)
+        guard !raw.isNaN else { return "—" }
+        // Cap at ~1 year to prevent Int overflow for absurd far-future dates.
+        let s = min(raw, 366 * 24 * 3600)
         if s < 0 { return "resetting…" }
         if s < 60 { return "resets in <1m" }
         let totalMinutes = Int(s / 60)

@@ -5,6 +5,7 @@ public enum FetchError: Error, Equatable {
     case unauthorized
     case badResponse(Int)
     case network
+    case undecodable
 }
 
 public enum UsageRequestBuilder {
@@ -30,9 +31,14 @@ public enum UsageRequestBuilder {
 public struct UsageFetcher: Sendable {
     private static let log = Logger(subsystem: "pl.bbi.claude-usage-pill", category: "fetch")
     private let loadCredentials: @Sendable () throws -> OAuthCredentials
+    private let session: URLSession
 
-    public init(loadCredentials: @escaping @Sendable () throws -> OAuthCredentials) {
+    public init(
+        loadCredentials: @escaping @Sendable () throws -> OAuthCredentials,
+        session: URLSession = .shared
+    ) {
         self.loadCredentials = loadCredentials
+        self.session = session
     }
 
     public func fetch() async throws -> UsageSnapshot {
@@ -40,21 +46,26 @@ public struct UsageFetcher: Sendable {
         let req = UsageRequestBuilder.request(token: creds.accessToken)
         let (data, response): (Data, URLResponse)
         do {
-            (data, response) = try await URLSession.shared.data(for: req)
+            (data, response) = try await session.data(for: req)
         } catch {
+            // Preserve task cancellation so callers can handle it correctly.
+            if error is CancellationError { throw error }
             Self.log.warning("network error: \(error.localizedDescription)")
             throw FetchError.network
         }
-        if let http = response as? HTTPURLResponse,
-           let err = UsageRequestBuilder.mapStatus(http.statusCode) {
+        guard let http = response as? HTTPURLResponse else {
+            throw FetchError.network
+        }
+        if let err = UsageRequestBuilder.mapStatus(http.statusCode) {
             Self.log.warning("usage endpoint HTTP \(http.statusCode)")
             throw err
         }
         do {
             return try UsageSnapshot.decode(from: data)
         } catch {
-            Self.log.error("undecodable body: \(String(data: data.prefix(500), encoding: .utf8) ?? "<binary>")")
-            throw FetchError.badResponse(200)
+            let body = String(data: data.prefix(500), encoding: .utf8) ?? "<binary>"
+            Self.log.error("undecodable body: \(body, privacy: .public)")
+            throw FetchError.undecodable
         }
     }
 }

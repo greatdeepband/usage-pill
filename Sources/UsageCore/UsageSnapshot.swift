@@ -2,11 +2,12 @@ import Foundation
 import CoreFoundation
 
 public struct UsageWindow: Equatable, Sendable {
-    public let utilization: Double // clamped to 0...100
+    public let utilization: Double // clamped to 0...100; NaN maps to 0
     public let resetsAt: Date?
 
     public init(utilization: Double, resetsAt: Date?) {
-        self.utilization = utilization
+        let u = utilization.isNaN ? 0.0 : utilization
+        self.utilization = min(max(u, 0), 100)
         self.resetsAt = resetsAt
     }
 }
@@ -62,15 +63,22 @@ extension UsageWindow {
     static func flexibleDate(_ value: Any?) -> Date? {
         guard let value = value else { return nil }
 
-        // Numeric: epoch seconds or epoch milliseconds
+        // Numeric: epoch seconds or epoch milliseconds.
+        // Only values that land in the sane window 2000-01-01…2100-01-01 are accepted;
+        // anything outside (including ±inf, NaN, or 1e30) is rejected.
         if let number = value as? NSNumber {
             guard CFGetTypeID(number) != CFBooleanGetTypeID() else { return nil }
             let interval = number.doubleValue
-            guard interval > 0 else { return nil }
+            guard interval.isFinite else { return nil }
+            // 946_684_800 = 2000-01-01T00:00:00Z, 4_102_444_800 = 2100-01-01T00:00:00Z
+            let epochWindow: ClosedRange<Double> = 946_684_800...4_102_444_800
             // Values > 1e12 are interpreted as milliseconds (1e12 epoch-seconds ≈ year 33658)
             if interval > 1_000_000_000_000 {
-                return Date(timeIntervalSince1970: interval / 1000)
+                let seconds = interval / 1000
+                guard epochWindow.contains(seconds) else { return nil }
+                return Date(timeIntervalSince1970: seconds)
             } else {
+                guard epochWindow.contains(interval) else { return nil }
                 return Date(timeIntervalSince1970: interval)
             }
         }
@@ -110,7 +118,9 @@ extension UsageWindow {
             var digitCount = 0
             var digitEnd = afterDot.startIndex
             for ch in afterDot {
-                if ch.isNumber {
+                // Only ASCII decimal digits (0–9); Arabic-Indic and other Unicode
+                // digit forms must not be treated as fraction digits.
+                if ch.isASCII && ch.isWholeNumber {
                     digitCount += 1
                     digitEnd = afterDot.index(after: digitEnd)
                 } else {

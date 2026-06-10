@@ -47,7 +47,20 @@ public struct KeychainCredentialsProvider: Sendable {
         var item: CFTypeRef?
         let status = SecItemCopyMatching(query as CFDictionary, &item)
         if status == errSecSuccess, let data = item as? Data {
-            return try CredentialsParser.parse(data)
+            do {
+                return try CredentialsParser.parse(data)
+            } catch {
+                // Keychain item is present but unreadable (corrupt or wrong shape).
+                // Fall through to the file store; if that is also absent, rethrow
+                // the original .unreadable error — not .notFound — so the caller
+                // knows something was found but could not be parsed.
+                let url = FileManager.default.homeDirectoryForCurrentUser
+                    .appending(components: ".claude", ".credentials.json")
+                if let fileData = try? Data(contentsOf: url) {
+                    return try CredentialsParser.parse(fileData)
+                }
+                throw error
+            }
         }
         // Any non-success status (not-found, but also user-canceled or ACL-denied)
         // falls through to the file store; if that is absent too, the caller sees

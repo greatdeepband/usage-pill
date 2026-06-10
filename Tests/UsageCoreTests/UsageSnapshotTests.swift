@@ -7,6 +7,19 @@ import Testing
     #expect(snap.session != nil)
     #expect(snap.week != nil)
     let s = try #require(snap.session)
+    let w = try #require(snap.week)
+
+    // Pin exact utilization values from the 2026-06-10 live fixture.
+    #expect(s.utilization == 77.0)
+    #expect(w.utilization == 30.0)
+
+    // Pin the session reset instant: "2026-06-11T00:49:59.764212+00:00"
+    // truncated to milliseconds → "2026-06-11T00:49:59.764Z".
+    let fracFmt = ISO8601DateFormatter()
+    fracFmt.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+    let expectedSession = try #require(fracFmt.date(from: "2026-06-11T00:49:59.764Z"))
+    #expect(s.resetsAt == expectedSession)
+
     #expect((0...100).contains(s.utilization))
     #expect(s.resetsAt != nil)
 }
@@ -66,6 +79,18 @@ import Testing
     let date = try #require(snap.session?.resetsAt)
     let whole = try #require(ISO8601DateFormatter().date(from: "2026-06-11T00:49:59Z"))
     #expect(abs(date.timeIntervalSince(whole)) < 1.0)
+}
+
+@Test func rejectsInsaneEpochValues() throws {
+    let json = #"{"five_hour":{"utilization":1,"resets_at":1e30},"seven_day":{"utilization":1,"resets_at":-5}}"#
+    let snap = try UsageSnapshot.decode(from: Data(json.utf8))
+    #expect(snap.session?.resetsAt == nil)
+    #expect(snap.week?.resetsAt == nil)
+}
+
+@Test func memberwiseInitClampsToo() {
+    #expect(UsageWindow(utilization: 5000, resetsAt: nil).utilization == 100)
+    #expect(UsageWindow(utilization: .nan, resetsAt: nil).utilization == 0)
 }
 
 @Test func rejectsBooleanNumbers() throws {

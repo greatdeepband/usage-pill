@@ -15,7 +15,7 @@ keys(json.load(sys.stdin))'
 TOKEN=$(echo "$CREDS" | /usr/bin/python3 -c \
   'import sys,json; print(json.load(sys.stdin)["claudeAiOauth"]["accessToken"])')
 echo "--- usage endpoint response ---"
-curl -sS https://api.anthropic.com/api/oauth/usage \
-  -H "Authorization: Bearer $TOKEN" \
+printf 'header = "Authorization: Bearer %s"\n' "$TOKEN" | curl -sS --config - \
+  https://api.anthropic.com/api/oauth/usage \
   -H "anthropic-beta: oauth-2025-04-20" \
   -H "Content-Type: application/json" | /usr/bin/python3 -m json.tool
