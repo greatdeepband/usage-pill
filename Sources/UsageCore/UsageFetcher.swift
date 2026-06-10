@@ -48,8 +48,10 @@ public struct UsageFetcher: Sendable {
         do {
             (data, response) = try await session.data(for: req)
         } catch {
-            // Preserve task cancellation so callers can handle it correctly.
+            // Real-world cancellation surfaces as URLError(.cancelled); normalize it
+            // so callers (UsageModel) can leave state untouched on teardown.
             if error is CancellationError { throw error }
+            if (error as? URLError)?.code == .cancelled { throw CancellationError() }
             Self.log.warning("network error: \(error.localizedDescription)")
             throw FetchError.network
         }

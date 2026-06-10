@@ -17,12 +17,12 @@ public final class UsageModel: ObservableObject {
     @Published public private(set) var lastSuccess: Date?
     @Published public private(set) var status: Status = .loading
 
-    private let fetch: () async throws -> UsageSnapshot
+    private let fetch: @MainActor () async throws -> UsageSnapshot
     private let now: @Sendable () -> Date
     private var inFlight = false
 
     public init(
-        fetch: @escaping () async throws -> UsageSnapshot,
+        fetch: @escaping @MainActor () async throws -> UsageSnapshot,
         now: @escaping @Sendable () -> Date = { Date() }
     ) {
         self.fetch = fetch
@@ -52,7 +52,7 @@ public final class UsageModel: ObservableObject {
         }
     }
 
-    /// True when the footer should turn amber: no successful fetch in >5 min.
+    /// Data is considered old after 5 minutes without a successful fetch.
     public var isDataOld: Bool {
         guard let lastSuccess else { return true }
         return now().timeIntervalSince(lastSuccess) > 300

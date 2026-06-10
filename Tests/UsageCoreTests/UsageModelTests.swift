@@ -19,7 +19,10 @@ private func makeModel(
 /// Hands out queued results; final result repeats forever.
 private final class ResultBox: @unchecked Sendable {
     private var results: [Result<UsageSnapshot, Error>]
-    init(_ r: [Result<UsageSnapshot, Error>]) { results = r }
+    init(_ r: [Result<UsageSnapshot, Error>]) {
+        precondition(!r.isEmpty, "ResultBox needs at least one result")
+        results = r
+    }
     func next() throws -> UsageSnapshot {
         let r = results.count > 1 ? results.removeFirst() : results[0]
         return try r.get()
@@ -44,6 +47,19 @@ private final class ResultBox: @unchecked Sendable {
     await model.refresh()
     #expect(model.status == .stale(reason: .network))
     #expect(model.snapshot == snapA) // old data retained
+    #expect(model.lastSuccess == Date(timeIntervalSince1970: 1000))
+}
+
+@Test @MainActor func unauthorizedKeepsLastGoodData() async {
+    let model = makeModel(
+        results: [.success(snapA), .failure(FetchError.unauthorized)],
+        now: { Date(timeIntervalSince1970: 1000) }
+    )
+    await model.refresh()
+    await model.refresh()
+    #expect(model.status == .stale(reason: .unauthorized))
+    #expect(model.snapshot == snapA)
+    #expect(model.lastSuccess == Date(timeIntervalSince1970: 1000))
 }
 
 @Test @MainActor func mapsErrorsToStaleReasons() async {
@@ -70,6 +86,19 @@ private final class ResultBox: @unchecked Sendable {
     await model.refresh()
     #expect(model.status == .ok)
     #expect(model.snapshot == snapA)
+}
+
+@Test @MainActor func secondsSinceSuccessIsNilBeforeAnyFetch() {
+    let model = makeModel(results: [.success(snapA)], now: { Date(timeIntervalSince1970: 1000) })
+    #expect(model.secondsSinceSuccess() == nil)
+}
+
+@Test @MainActor func secondsSinceSuccessAfterRefresh() async {
+    let clock = ClockBox(Date(timeIntervalSince1970: 1000))
+    let model = makeModel(results: [.success(snapA)], now: { clock.now })
+    await model.refresh()
+    clock.now = Date(timeIntervalSince1970: 1042)
+    #expect(model.secondsSinceSuccess() == 42)
 }
 
 @Test @MainActor func dataIsOldAfterFiveMinutes() async {

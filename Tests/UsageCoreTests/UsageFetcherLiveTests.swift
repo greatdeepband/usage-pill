@@ -84,6 +84,18 @@ struct UsageFetcherLiveTests {
         #expect(networkHit == false)
     }
 
+    // (e) URLError(.cancelled) from stub → normalized to CancellationError
+    @Test func urlCancelledNormalizesToCancellationError() async throws {
+        StubProtocol.handler = { _ in throw URLError(.cancelled) }
+        let fetcher = UsageFetcher(
+            loadCredentials: { OAuthCredentials(accessToken: "tok", expiresAt: nil) },
+            session: makeSession()
+        )
+        await #expect(throws: CancellationError.self) {
+            _ = try await fetcher.fetch()
+        }
+    }
+
     // (d) 200 + valid minimal JSON → returns decoded snapshot
     @Test func decodesValidResponse() async throws {
         let json = #"{"five_hour":{"utilization":50.0,"resets_at":"2026-06-11T00:49:59Z"}}"#
