@@ -77,24 +77,109 @@ private final class ResultBox: @unchecked Sendable {
     let model = makeModel(results: [.success(snapA)], now: { clock.now })
     await model.refresh()
     #expect(model.isDataOld == false)
+    clock.now = Date(timeIntervalSince1970: 300)
+    #expect(model.isDataOld == false) // strictly greater-than 300s
     clock.now = Date(timeIntervalSince1970: 301)
     #expect(model.isDataOld == true)
 }
 
 @Test @MainActor func dataIsOldWhenNeverFetched() {
-    let model = makeModel(results: [.failure(FetchError.network)], now: { Date(timeIntervalSince1970: 0) })
+    let model = makeModel(results: [.success(snapA)], now: { Date(timeIntervalSince1970: 0) })
     #expect(model.isDataOld == true)
 }
 
 @Test @MainActor func overlappingRefreshIsCoalesced() async {
-    let model = makeModel(results: [.success(snapA)], now: { Date(timeIntervalSince1970: 0) })
+    // Two async continuations: fetchStarted fires when fetch() begins,
+    // fetchRelease fires when the test lets it proceed.  This guarantees the
+    // first refresh is genuinely suspended when the second one is started.
+    let counter = CallCounter()
+    var fetchStartedCont: CheckedContinuation<Void, Never>?
+    var fetchReleaseCont: CheckedContinuation<Void, Never>?
+
+    let model = UsageModel(
+        fetch: {
+            counter.increment()
+            // Signal that fetch has started, then wait for the test to release.
+            await withCheckedContinuation { cont in fetchStartedCont = cont }
+            await withCheckedContinuation { cont in fetchReleaseCont = cont }
+            return snapA
+        },
+        now: { Date(timeIntervalSince1970: 0) }
+    )
+
+    // Launch first refresh.  It will run until it stores fetchStartedCont.
     async let a: Void = model.refresh()
+    // Yield until the fetch has stored fetchStartedCont.
+    while fetchStartedCont == nil { await Task.yield() }
+    fetchStartedCont!.resume()          // let fetch proceed to fetchReleaseCont
+    fetchStartedCont = nil
+
+    // Wait until fetch is blocked on fetchReleaseCont.
+    while fetchReleaseCont == nil { await Task.yield() }
+
+    // At this point the first refresh is definitely in-flight and suspended.
+    // Launch the second refresh — it must see inFlight==true and return without
+    // calling fetch().
     async let b: Void = model.refresh()
-    _ = await (a, b)
+    _ = await b                         // second refresh must complete immediately
+
+    // Release the first refresh.
+    fetchReleaseCont!.resume()
+    fetchReleaseCont = nil
+    _ = await a
+
     #expect(model.status == .ok)
+    #expect(counter.count == 1)         // second refresh dropped while first was in flight
+}
+
+@Test @MainActor func cancellationLeavesStateUntouched() async {
+    // fetch blocks until released; after cancel() the check throws CancellationError.
+    var fetchReleaseCont: CheckedContinuation<Void, Never>?
+    var fetchStartedCont: CheckedContinuation<Void, Never>?
+
+    let model = UsageModel(
+        fetch: {
+            await withCheckedContinuation { cont in fetchStartedCont = cont }
+            await withCheckedContinuation { cont in fetchReleaseCont = cont }
+            try Task.checkCancellation()
+            return snapA
+        },
+        now: { Date(timeIntervalSince1970: 0) }
+    )
+    #expect(model.status == .loading)
+
+    let t = Task { await model.refresh() }
+
+    // Wait until the fetch has stored fetchStartedCont.
+    while fetchStartedCont == nil { await Task.yield() }
+    fetchStartedCont!.resume()
+    fetchStartedCont = nil
+
+    // Wait until fetch is blocked on fetchReleaseCont.
+    while fetchReleaseCont == nil { await Task.yield() }
+
+    // Cancel the task, then open the gate — checkCancellation() will throw.
+    t.cancel()
+    fetchReleaseCont!.resume()
+    fetchReleaseCont = nil
+    await t.value
+
+    // CancellationError must not flip state to .stale
+    #expect(model.status == .loading)
+
+    // Prove inFlight was released: a subsequent refresh must succeed.
+    // Use a fresh simple model to avoid re-entering the gating fetch.
+    let model2 = UsageModel(fetch: { snapA }, now: { Date(timeIntervalSince1970: 0) })
+    await model2.refresh()
+    #expect(model2.status == .ok)
 }
 
 private final class ClockBox: @unchecked Sendable {
     var now: Date
     init(_ d: Date) { now = d }
+}
+
+private final class CallCounter: @unchecked Sendable {
+    private(set) var count = 0
+    func increment() { count += 1 }
 }

@@ -40,6 +40,9 @@ public final class UsageModel: ObservableObject {
             snapshot = snap
             lastSuccess = now()
             status = .ok
+        } catch is CancellationError {
+            // Mid-flight cancellation (app teardown): leave state untouched —
+            // it is neither fresh data nor a network problem.
         } catch is CredentialsError {
             status = .stale(reason: .noCredentials)
         } catch let error as FetchError {
