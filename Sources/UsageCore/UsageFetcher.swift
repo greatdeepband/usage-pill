@@ -29,7 +29,7 @@ public enum UsageRequestBuilder {
 
 public struct UsageFetcher: Sendable {
     private static let log = Logger(subsystem: "pl.bbi.claude-usage-pill", category: "fetch")
-    let loadCredentials: @Sendable () throws -> OAuthCredentials
+    private let loadCredentials: @Sendable () throws -> OAuthCredentials
 
     public init(loadCredentials: @escaping @Sendable () throws -> OAuthCredentials) {
         self.loadCredentials = loadCredentials

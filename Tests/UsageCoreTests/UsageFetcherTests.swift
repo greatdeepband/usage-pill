@@ -8,6 +8,7 @@ import Testing
     #expect(req.httpMethod == "GET")
     #expect(req.value(forHTTPHeaderField: "Authorization") == "Bearer tok123")
     #expect(req.value(forHTTPHeaderField: "anthropic-beta") == "oauth-2025-04-20")
+    #expect(req.value(forHTTPHeaderField: "Content-Type") == "application/json")
     #expect(req.timeoutInterval == 10)
 }
 
