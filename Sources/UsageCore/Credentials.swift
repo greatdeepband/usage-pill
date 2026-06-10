@@ -49,9 +49,11 @@ public struct KeychainCredentialsProvider: Sendable {
         if status == errSecSuccess, let data = item as? Data {
             return try CredentialsParser.parse(data)
         }
-        // Fallback: file-based credential store used on some setups.
+        // Any non-success status (not-found, but also user-canceled or ACL-denied)
+        // falls through to the file store; if that is absent too, the caller sees
+        // .notFound and the UI shows the sign-in hint.
         let url = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent(".claude/.credentials.json")
+            .appending(components: ".claude", ".credentials.json")
         guard let data = try? Data(contentsOf: url) else {
             throw CredentialsError.notFound
         }
