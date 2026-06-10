@@ -1,4 +1,5 @@
 import Foundation
+import CoreFoundation
 
 public struct UsageWindow: Equatable, Sendable {
     public let utilization: Double // clamped to 0...100
@@ -40,12 +41,21 @@ public extension UsageSnapshot {
 extension UsageWindow {
     init?(json: Any?) {
         guard let dict = json as? [String: Any],
-              let raw = (dict["utilization"] as? NSNumber)?.doubleValue else { return nil }
+              let number = dict["utilization"] as? NSNumber,
+              CFGetTypeID(number) != CFBooleanGetTypeID() else { return nil }
+        let raw = number.doubleValue
         self.init(
             utilization: min(max(raw, 0), 100),
             resetsAt: Self.flexibleDate(dict["resets_at"])
         )
     }
+
+    private nonisolated(unsafe) static let plainFormatter = ISO8601DateFormatter()
+    private nonisolated(unsafe) static let fracFormatter: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return f
+    }()
 
     /// Accepts ISO8601 strings with any number of fractional digits (incl. microseconds),
     /// or epoch seconds/milliseconds as a number.
@@ -54,9 +64,10 @@ extension UsageWindow {
 
         // Numeric: epoch seconds or epoch milliseconds
         if let number = value as? NSNumber {
+            guard CFGetTypeID(number) != CFBooleanGetTypeID() else { return nil }
             let interval = number.doubleValue
             guard interval > 0 else { return nil }
-            // Values > 1e11 are interpreted as milliseconds (year ~5138 in seconds)
+            // Values > 1e12 are interpreted as milliseconds (1e12 epoch-seconds ≈ year 33658)
             if interval > 1_000_000_000_000 {
                 return Date(timeIntervalSince1970: interval / 1000)
             } else {
@@ -67,15 +78,12 @@ extension UsageWindow {
         guard let str = value as? String else { return nil }
 
         // Attempt 1: standard ISO8601 without fractional seconds
-        let plain = ISO8601DateFormatter()
-        if let date = plain.date(from: str) {
+        if let date = plainFormatter.date(from: str) {
             return date
         }
 
         // Attempt 2: ISO8601 with fractional seconds (works for exactly 3 digits)
-        let withFrac = ISO8601DateFormatter()
-        withFrac.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        if let date = withFrac.date(from: str) {
+        if let date = fracFormatter.date(from: str) {
             return date
         }
 
@@ -83,11 +91,7 @@ extension UsageWindow {
         // Handles microseconds (6 digits), nanoseconds (9 digits), or any count.
         // Pattern: matches a dot followed by 1+ digits before timezone offset or Z.
         let normalized = normalizeFractionalSeconds(str)
-        if let date = withFrac.date(from: normalized) {
-            return date
-        }
-        // Also try plain formatter on normalized (in case fraction was stripped)
-        if let date = plain.date(from: normalized) {
+        if let date = fracFormatter.date(from: normalized) {
             return date
         }
 

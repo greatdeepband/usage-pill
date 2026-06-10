@@ -59,3 +59,19 @@ import Testing
         _ = try UsageSnapshot.decode(from: Data("[1,2,3]".utf8))
     }
 }
+
+@Test func parsesShortFractionalSeconds() throws {
+    let json = #"{"five_hour":{"utilization":1,"resets_at":"2026-06-11T00:49:59.7+00:00"}}"#
+    let snap = try UsageSnapshot.decode(from: Data(json.utf8))
+    let date = try #require(snap.session?.resetsAt)
+    let whole = try #require(ISO8601DateFormatter().date(from: "2026-06-11T00:49:59Z"))
+    #expect(abs(date.timeIntervalSince(whole)) < 1.0)
+}
+
+@Test func rejectsBooleanNumbers() throws {
+    let json = #"{"five_hour":{"utilization":true,"resets_at":"2026-06-11T00:49:59Z"},"seven_day":{"utilization":10,"resets_at":true}}"#
+    let snap = try UsageSnapshot.decode(from: Data(json.utf8))
+    #expect(snap.session == nil)          // boolean utilization -> window rejected
+    #expect(snap.week?.utilization == 10)
+    #expect(snap.week?.resetsAt == nil)   // boolean resets_at -> nil date
+}
