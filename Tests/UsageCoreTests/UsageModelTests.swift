@@ -134,14 +134,18 @@ private final class ResultBox: @unchecked Sendable {
 
 @Test @MainActor func cancellationLeavesStateUntouched() async {
     // fetch blocks until released; after cancel() the check throws CancellationError.
+    // After the gated pass, `gated` is switched off so the SAME model can refresh again.
     var fetchReleaseCont: CheckedContinuation<Void, Never>?
     var fetchStartedCont: CheckedContinuation<Void, Never>?
+    let gateActive = CallCounter() // count == 0 → gated; incremented to disable the gate
 
     let model = UsageModel(
         fetch: {
-            await withCheckedContinuation { cont in fetchStartedCont = cont }
-            await withCheckedContinuation { cont in fetchReleaseCont = cont }
-            try Task.checkCancellation()
+            if gateActive.count == 0 {
+                await withCheckedContinuation { cont in fetchStartedCont = cont }
+                await withCheckedContinuation { cont in fetchReleaseCont = cont }
+                try Task.checkCancellation()
+            }
             return snapA
         },
         now: { Date(timeIntervalSince1970: 0) }
@@ -167,11 +171,11 @@ private final class ResultBox: @unchecked Sendable {
     // CancellationError must not flip state to .stale
     #expect(model.status == .loading)
 
-    // Prove inFlight was released: a subsequent refresh must succeed.
-    // Use a fresh simple model to avoid re-entering the gating fetch.
-    let model2 = UsageModel(fetch: { snapA }, now: { Date(timeIntervalSince1970: 0) })
-    await model2.refresh()
-    #expect(model2.status == .ok)
+    // Prove inFlight was released on the SAME model: disable the gate and
+    // refresh again — it must run and reach .ok.
+    gateActive.increment()
+    await model.refresh()
+    #expect(model.status == .ok)
 }
 
 private final class ClockBox: @unchecked Sendable {
