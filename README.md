@@ -4,7 +4,9 @@ A tiny always-on-top macOS widget showing your Claude usage as two slim bars:
 the **5-hour session** window (clay) and the **weekly** limit (dusty blue).
 Hover to expand it into a card with reset countdowns and data freshness.
 
-<!-- TODO: screenshot — compact pill + hover-expanded card over a desktop -->
+<p align="center">
+  <img src="docs/screenshot-expanded.png" width="300" alt="Claude Usage Pill, hover-expanded: Session and Week bars with reset countdowns and freshness footer">
+</p>
 
 - Floats above every window, on every Space, including over full-screen apps.
 - Shows the exact percentages Claude Code's `/usage` command reports, fetched
