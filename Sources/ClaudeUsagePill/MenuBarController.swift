@@ -1,0 +1,68 @@
+import AppKit
+import ServiceManagement
+import UsageCore
+
+@MainActor
+final class MenuBarController: NSObject {
+    private var statusItem: NSStatusItem!
+    private let model: UsageModel
+
+    init(model: UsageModel) {
+        self.model = model
+        super.init()
+        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+        statusItem.button?.image = NSImage(
+            systemSymbolName: "gauge.with.needle", accessibilityDescription: "Claude Usage"
+        )
+        let menu = NSMenu()
+        let refreshItem = NSMenuItem(title: "Refresh Now", action: #selector(refresh), keyEquivalent: "r")
+        refreshItem.target = self
+        let loginItem = NSMenuItem(title: "Launch at Login", action: #selector(toggleLogin), keyEquivalent: "")
+        loginItem.target = self
+        let quitItem = NSMenuItem(title: "Quit Claude Usage Pill", action: #selector(quit), keyEquivalent: "q")
+        quitItem.target = self
+        menu.addItem(refreshItem)
+        menu.addItem(loginItem)
+        menu.addItem(.separator())
+        menu.addItem(quitItem)
+        menu.delegate = self
+        statusItem.menu = menu
+    }
+
+    @objc private func refresh() {
+        Task { @MainActor in await model.refresh() }
+    }
+
+    @objc private func toggleLogin() {
+        // Launch at Login only works reliably when the app lives in /Applications.
+        guard Bundle.main.bundlePath.hasPrefix("/Applications") else {
+            let alert = NSAlert()
+            alert.messageText = "Move to Applications first"
+            alert.informativeText = "Launch at Login needs the app to live in /Applications so it can be found at login. Copy \"Claude Usage Pill.app\" there and toggle this again."
+            alert.alertStyle = .informational
+            NSApp.activate(ignoringOtherApps: true)
+            alert.runModal()
+            return
+        }
+
+        do {
+            if SMAppService.mainApp.status == .enabled {
+                try SMAppService.mainApp.unregister()
+            } else {
+                try SMAppService.mainApp.register()
+            }
+        } catch {
+            NSApp.activate(ignoringOtherApps: true)
+            NSAlert(error: error).runModal()
+        }
+    }
+
+    @objc private func quit() { NSApp.terminate(nil) }
+}
+
+extension MenuBarController: NSMenuDelegate {
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        menu.items.first { $0.action == #selector(toggleLogin) }?
+            .state = SMAppService.mainApp.status == .enabled ? .on : .off
+    }
+}
