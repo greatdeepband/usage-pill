@@ -33,8 +33,11 @@ openssl req -x509 -newkey rsa:2048 -keyout "$TMP/key.pem" -out "$TMP/cert.pem" \
     -addext "keyUsage=critical,digitalSignature" \
     -addext "extendedKeyUsage=critical,codeSigning" 2>/dev/null
 
+# Legacy PBE/MAC algorithms: OpenSSL 3 defaults (AES + SHA-256 MAC) are not
+# readable by macOS `security import`.
 openssl pkcs12 -export -out "$TMP/id.p12" -inkey "$TMP/key.pem" \
-    -in "$TMP/cert.pem" -passout pass:cup-temp
+    -in "$TMP/cert.pem" -passout pass:cup-temp \
+    -keypbe PBE-SHA1-3DES -certpbe PBE-SHA1-3DES -macalg sha1
 
 # -T pre-authorizes codesign to use the private key without prompting.
 security import "$TMP/id.p12" -k "$HOME/Library/Keychains/login.keychain-db" \
