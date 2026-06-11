@@ -15,7 +15,7 @@ final class ThemeStore: ObservableObject {
         let loaded = settings.load()
         theme = loaded.theme
         palette = loaded.palette
-        showIdentity = loaded.showIdentity
+        showIdentity = loaded.showIdentity // didSet does not fire during init — no spurious persist()
     }
 
     func select(_ p: Palette) {

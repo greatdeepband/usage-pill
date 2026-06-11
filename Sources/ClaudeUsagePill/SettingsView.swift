@@ -45,7 +45,9 @@ struct SettingsView: View {
     }
 
     private func swatch(for p: Palette) -> some View {
-        let t = p.preset!
+        // The ForEach filters out .custom, so preset is always present; fall
+        // back to Dusk rather than trapping if a preset-less case ever joins.
+        let t = p.preset ?? Palette.dusk.preset!
         return VStack(spacing: 3) {
             HStack(spacing: 0) {
                 Color(themeHex: t.sessionHex)
