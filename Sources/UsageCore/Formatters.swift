@@ -17,7 +17,7 @@ public enum CountdownFormatter {
     // 12/24-hour system preference (Apple QA1480). Timezone is captured per
     // format-call from the formatter's current default; a system timezone change
     // mid-run may show stale weekday text until restart (accepted limitation).
-    private nonisolated(unsafe) static let weekResetFormatter: DateFormatter = {
+    private static let weekResetFormatter: DateFormatter = {
         let f = DateFormatter()
         f.locale = Locale(identifier: "en_US_POSIX")
         f.dateFormat = "EEE HH:mm"
