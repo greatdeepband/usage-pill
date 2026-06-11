@@ -23,7 +23,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         themeStore = ThemeStore()
         let profileFetcher = ProfileFetcher(cache: cache)
         identityModel = IdentityModel(cache: cache, fetchProfile: { try await profileFetcher.fetch() })
-        settingsController = SettingsWindowController(store: themeStore, identity: identityModel)
+        settingsController = SettingsWindowController(store: themeStore)
 
         panel = PillPanel()
         panel.contentView = NSHostingView(
