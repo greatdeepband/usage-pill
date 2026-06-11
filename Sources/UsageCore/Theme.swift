@@ -24,7 +24,7 @@ public enum Palette: String, CaseIterable, Sendable {
 }
 
 /// UserDefaults persistence with Dusk fallback on any corruption.
-public struct ThemeSettings: Sendable {
+public struct ThemeSettings {
     public static let sessionKey = "theme.session"
     public static let weekKey = "theme.week"
     public static let paletteKey = "theme.palette"
