@@ -6,6 +6,10 @@ final class PillPanel: NSPanel {
     static let expandedSize = NSSize(width: 250, height: 132)
     private static let originKey = "pillTopLeft"
 
+    /// When true, `saveLocation()` is a no-op.  Set during any programmatic
+    /// reposition so system-induced moves never overwrite the user's saved top-left.
+    private var suppressSave = false
+
     init() {
         super.init(
             contentRect: NSRect(origin: .zero, size: Self.compactSize),
@@ -29,6 +33,10 @@ final class PillPanel: NSPanel {
             self, selector: #selector(saveLocation),
             name: NSWindow.didMoveNotification, object: self
         )
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(handleScreenChange),
+            name: NSApplication.didChangeScreenParametersNotification, object: nil
+        )
     }
 
     override var canBecomeKey: Bool { false }
@@ -36,12 +44,27 @@ final class PillPanel: NSPanel {
 
     /// Grow/shrink downward, keeping the top edge fixed.
     func setExpanded(_ expanded: Bool) {
+        // This guard is race-free ONLY because setFrame(animate: true) blocks the main
+        // thread until the animation completes (verified empirically); if this is ever
+        // switched to non-blocking animator() animation, replace the guard with an
+        // explicit desired-state flag.
         let size = expanded ? Self.expandedSize : Self.compactSize
         guard frame.size != size else { return }
         var f = frame
         let top = f.origin.y + f.size.height
         f.size = size
         f.origin.y = top - size.height
+
+        // Clamp bottom edge: if expanding pushes us below the visible area, shift up.
+        if expanded {
+            let screen = self.screen ?? NSScreen.main
+            if let visibleFrame = screen?.visibleFrame, f.origin.y < visibleFrame.minY {
+                f.origin.y = visibleFrame.minY
+            }
+        }
+
+        suppressSave = true
+        defer { suppressSave = false }
         setFrame(f, display: true, animate: true)
     }
 
@@ -50,7 +73,21 @@ final class PillPanel: NSPanel {
     }
 
     @objc private func saveLocation() {
-        UserDefaults.standard.set(NSStringFromPoint(topLeft), forKey: Self.originKey)
+        guard !suppressSave else { return }
+        // Ignore moves where the resulting top-left is off-screen — these are
+        // system-induced shuffles (e.g., during display reconfiguration), not user
+        // drags.  AppKit constrains user drags to always end fully on-screen, so a
+        // clamped top-left that differs from the raw one means the system moved us.
+        let tl = topLeft
+        guard clampTopLeft(tl, pillSize: Self.compactSize,
+                            screens: NSScreen.screens.map(\.visibleFrame)) == tl else { return }
+        UserDefaults.standard.set(NSStringFromPoint(tl), forKey: Self.originKey)
+    }
+
+    /// Called when the display configuration changes.  Re-reads the user's saved
+    /// top-left and re-clamps it against the current screen geometry.
+    @objc private func handleScreenChange() {
+        restoreOrDefaultPosition()
     }
 
     private func restoreOrDefaultPosition() {
@@ -61,6 +98,8 @@ final class PillPanel: NSPanel {
             return CGPoint(x: main.maxX - Self.compactSize.width - 16, y: main.maxY - 16)
         }()
         let clamped = clampTopLeft(saved ?? fallback, pillSize: Self.compactSize, screens: screens)
+        suppressSave = true
+        defer { suppressSave = false }
         setFrameOrigin(CGPoint(x: clamped.x, y: clamped.y - Self.compactSize.height))
     }
 }

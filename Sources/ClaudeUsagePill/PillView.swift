@@ -22,7 +22,7 @@ struct PillView: View {
 
     @State private var expanded = false
     @State private var now = Date()
-    private let tick = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
+    private let tick = Timer.publish(every: 1, tolerance: 0.2, on: .main, in: .common).autoconnect()
 
     var body: some View {
         content

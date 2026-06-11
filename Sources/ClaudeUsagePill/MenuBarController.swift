@@ -34,6 +34,17 @@ final class MenuBarController: NSObject {
     }
 
     @objc private func toggleLogin() {
+        // Launch at Login only works reliably when the app lives in /Applications.
+        guard Bundle.main.bundlePath.hasPrefix("/Applications") else {
+            let alert = NSAlert()
+            alert.messageText = "Move to Applications first"
+            alert.informativeText = "Launch at Login needs the app to live in /Applications so it can be found at login. Copy \"Claude Usage Pill.app\" there and toggle this again."
+            alert.alertStyle = .informational
+            NSApp.activate(ignoringOtherApps: true)
+            alert.runModal()
+            return
+        }
+
         do {
             if SMAppService.mainApp.status == .enabled {
                 try SMAppService.mainApp.unregister()
@@ -41,6 +52,7 @@ final class MenuBarController: NSObject {
                 try SMAppService.mainApp.register()
             }
         } catch {
+            NSApp.activate(ignoringOtherApps: true)
             NSAlert(error: error).runModal()
         }
     }
