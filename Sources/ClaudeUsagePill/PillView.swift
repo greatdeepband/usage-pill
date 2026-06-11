@@ -68,8 +68,8 @@ struct PillView: View {
         VStack(alignment: .leading, spacing: 3) {
             HStack(spacing: 9) {
                 Image(systemName: symbol)
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundStyle(base.opacity(0.9))
+                    .font(.system(size: 10, weight: .light))
+                    .foregroundStyle(base.opacity(0.7))
                     .frame(width: 12)
                 if expanded {
                     Text(label)

@@ -21,6 +21,8 @@ public enum CredentialsParser {
               !token.isEmpty else {
             throw CredentialsError.unreadable
         }
+        // expiresAt is kept for diagnostics only; expiry is enforced by the
+        // server (401 → stale state), never checked locally.
         let expiresAt: Date?
         if let number = oauth["expiresAt"] as? NSNumber,
            CFGetTypeID(number) != CFBooleanGetTypeID() {
@@ -54,9 +56,7 @@ public struct KeychainCredentialsProvider: Sendable {
                 // Fall through to the file store; if that is also absent, rethrow
                 // the original .unreadable error — not .notFound — so the caller
                 // knows something was found but could not be parsed.
-                let url = FileManager.default.homeDirectoryForCurrentUser
-                    .appending(components: ".claude", ".credentials.json")
-                if let fileData = try? Data(contentsOf: url) {
+                if let fileData = fileCredentialsData() {
                     return try CredentialsParser.parse(fileData)
                 }
                 throw error
@@ -65,11 +65,16 @@ public struct KeychainCredentialsProvider: Sendable {
         // Any non-success status (not-found, but also user-canceled or ACL-denied)
         // falls through to the file store; if that is absent too, the caller sees
         // .notFound and the UI shows the sign-in hint.
-        let url = FileManager.default.homeDirectoryForCurrentUser
-            .appending(components: ".claude", ".credentials.json")
-        guard let data = try? Data(contentsOf: url) else {
+        guard let data = fileCredentialsData() else {
             throw CredentialsError.notFound
         }
         return try CredentialsParser.parse(data)
+    }
+
+    /// Contents of the file-based credential store used on some setups, if present.
+    private func fileCredentialsData() -> Data? {
+        let url = FileManager.default.homeDirectoryForCurrentUser
+            .appending(components: ".claude", ".credentials.json")
+        return try? Data(contentsOf: url)
     }
 }
