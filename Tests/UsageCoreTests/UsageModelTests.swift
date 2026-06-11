@@ -211,7 +211,7 @@ private final class ResultBox: @unchecked Sendable {
 @Test @MainActor func rateLimitedSetsBackoffAndSkipsPolls() async {
     let clock = ClockBox(Date(timeIntervalSince1970: 0))
     let results: [Result<UsageSnapshot, Error>] = [
-        .failure(FetchError.rateLimited(retryAfter: 200)),
+        .failure(FetchError.rateLimited(retryAfter: 300)),
         .success(snapA)
     ]
     let (model, callCount) = makeModelCounted(results: results, now: { clock.now })
@@ -221,14 +221,20 @@ private final class ResultBox: @unchecked Sendable {
     #expect(model.status == .stale(reason: .rateLimited))
     #expect(callCount() == 1)
 
-    // t=+100s: backoff window (200s) not elapsed → silently skipped
+    // t=+100s: backoff window (300s) not elapsed → silently skipped
     clock.now = Date(timeIntervalSince1970: 100)
     await model.refresh()
     #expect(model.status == .stale(reason: .rateLimited))
     #expect(callCount() == 1) // still 1 — fetch NOT called
 
-    // t=+201s: backoff elapsed → fetch called → success
-    clock.now = Date(timeIntervalSince1970: 201)
+    // t=+250s: a Retry-After below the 240s floor would have expired here,
+    // but 300 > 240 so the window is the header value — still skipped
+    clock.now = Date(timeIntervalSince1970: 250)
+    await model.refresh()
+    #expect(callCount() == 1)
+
+    // t=+301s: backoff elapsed → fetch called → success
+    clock.now = Date(timeIntervalSince1970: 301)
     await model.refresh()
     #expect(model.status == .ok)
     #expect(callCount() == 2)
@@ -339,6 +345,21 @@ private final class CallCounter: @unchecked Sendable {
     await model.refresh()
     #expect(model.status == .stale(reason: .rateLimited)) // auto poll still skipped
     clock.now = Date(timeIntervalSince1970: 361)
+    await model.refresh()
+    #expect(model.status == .ok)
+}
+
+@Test @MainActor func rateLimitedFloorIs240() async {
+    let clock = ClockBox(Date(timeIntervalSince1970: 0))
+    let (model, callCount) = makeModelCounted(
+        results: [.failure(FetchError.rateLimited(retryAfter: 60)), .success(snapA)],
+        now: { clock.now }
+    )
+    await model.refresh() // Retry-After 60 → floored to 240
+    clock.now = Date(timeIntervalSince1970: 100)
+    await model.refresh()
+    #expect(callCount() == 1) // 60s header must NOT be honored below the floor
+    clock.now = Date(timeIntervalSince1970: 241)
     await model.refresh()
     #expect(model.status == .ok)
 }

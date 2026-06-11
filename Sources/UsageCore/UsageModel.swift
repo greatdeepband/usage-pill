@@ -54,8 +54,10 @@ public final class UsageModel: ObservableObject {
         } catch is CredentialsError {
             status = .stale(reason: .noCredentials)
         } catch FetchError.rateLimited(let retryAfter) {
-            // Default 5 min, floor 2 min, cap 1 h.
-            let delay = min(max(retryAfter ?? 300, 120), 3600)
+            // Default 5 min, floor 4 min, cap 1 h. The floor sits above the
+            // endpoint's observed ~2-minute sustain rate so a retry doesn't
+            // land straight back inside the throttling window.
+            let delay = min(max(retryAfter ?? 300, 240), 3600)
             backoffUntil = now().addingTimeInterval(delay)
             status = .stale(reason: .rateLimited)
         } catch let error as FetchError {

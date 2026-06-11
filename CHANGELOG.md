@@ -1,5 +1,14 @@
 # Changelog
 
+## v1.2.2 — 2026-06-11
+
+- **Calmer polling.** The usage endpoint turned out to tolerate roughly one
+  request per 2 minutes sustained; the previous 60-second poll drew alternating
+  429s, leaving the pill in its "rate limited" state half the time. Polling is
+  now every 3 minutes (the bars move slowly anyway), and the post-429 backoff
+  floor rose to 4 minutes so a retry can't land straight back inside the
+  throttling window. Refresh Now still fetches immediately.
+
 ## v1.2.1 — 2026-06-11
 
 - **Plan badge now shows server truth.** The badge previously derived its
