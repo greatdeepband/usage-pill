@@ -139,6 +139,32 @@ struct UsageFetcherLiveTests {
         #expect(observedAuthHeaders == ["Bearer tokenA", "Bearer tokenB"])
     }
 
+    // (h) Every response is 401, but the loader rotates tokens each call →
+    //     exactly 2 network requests (initial + one retry) then throws .unauthorized.
+    //     Pins one-retry-max behavior so a future refactor can't silently loop.
+    @Test func oneRetryMaxOnPersistent401() async throws {
+        nonisolated(unsafe) var requestCount = 0
+        StubProtocol.handler = { _ in
+            requestCount += 1
+            return (Data(), makeResponse(statusCode: 401))
+        }
+
+        // Loader always rotates: token0, token1, token2, … — ensures reloadAfterUnauthorized
+        // returns non-nil (a changed token) so the retry path is exercised.
+        nonisolated(unsafe) var loadCount = 0
+        let cache = CredentialsCache(load: {
+            let t = "token\(loadCount)"
+            loadCount += 1
+            return OAuthCredentials(accessToken: t, expiresAt: nil)
+        })
+
+        let fetcher = UsageFetcher(cache: cache, session: makeSession())
+        await #expect(throws: FetchError.unauthorized) {
+            _ = try await fetcher.fetch()
+        }
+        #expect(requestCount == 2)
+    }
+
     // (g) 401 with unchanged token → throws FetchError.unauthorized after exactly ONE network request
     @Test func noRetryWhenTokenUnchanged() async throws {
         var requestCount = 0

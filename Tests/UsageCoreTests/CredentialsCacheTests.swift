@@ -106,4 +106,82 @@ private func makeToken(_ id: String) -> OAuthCredentials {
             _ = try await cache.credentials()
         }
     }
+
+    // 6. failedLoadIsNegativeCached
+    // After a failing credentials() call, a second call within the throttle
+    // window re-throws the cached error without invoking the loader again.
+    // Advancing the injected clock past the window allows the loader to be
+    // called once more.
+    @Test func failedLoadIsNegativeCached() async throws {
+        nonisolated(unsafe) var clockOffset: TimeInterval = 0
+        nonisolated(unsafe) var callCount = 0
+
+        let cache = CredentialsCache(
+            load: {
+                callCount += 1
+                throw CredentialsError.notFound
+            },
+            reloadThrottle: 600,
+            now: { Date(timeIntervalSinceReferenceDate: clockOffset) }
+        )
+
+        // First call: loader invoked, error propagated, negative-cache populated.
+        await #expect(throws: CredentialsError.notFound) {
+            _ = try await cache.credentials()
+        }
+        #expect(callCount == 1)
+
+        // Second call within window: cached error rethrown, loader NOT called again.
+        await #expect(throws: CredentialsError.notFound) {
+            _ = try await cache.credentials()
+        }
+        #expect(callCount == 1)
+
+        // Advance clock past throttle window.
+        clockOffset = 601
+
+        // Third call: negative cache expired → loader called again.
+        await #expect(throws: CredentialsError.notFound) {
+            _ = try await cache.credentials()
+        }
+        #expect(callCount == 2)
+    }
+
+    // 7. throwingForcedReloadDropsCacheAndNegativeCaches
+    // When reloadAfterUnauthorized() throws, the cached token is dropped and
+    // the failure is negative-cached so the next credentials() call within the
+    // window throws immediately without calling the loader — no re-prompt.
+    @Test func throwingForcedReloadDropsCacheAndNegativeCaches() async throws {
+        nonisolated(unsafe) var clockOffset: TimeInterval = 0
+        nonisolated(unsafe) var callCount = 0
+
+        // Loader returns tokenA on the first call, then throws .notFound.
+        let cache = CredentialsCache(
+            load: {
+                callCount += 1
+                if callCount == 1 { return makeToken("tokenA") }
+                throw CredentialsError.notFound
+            },
+            reloadThrottle: 600,
+            now: { Date(timeIntervalSinceReferenceDate: clockOffset) }
+        )
+
+        // Warm the cache with tokenA.
+        let creds = try await cache.credentials()
+        #expect(creds.accessToken == "tokenA")
+        #expect(callCount == 1)
+
+        // Forced reload at t=0: loader throws; poisoned token is dropped.
+        await #expect(throws: CredentialsError.notFound) {
+            _ = try await cache.reloadAfterUnauthorized()
+        }
+        #expect(callCount == 2)
+
+        // Immediately after, credentials() within the window: must throw .notFound
+        // WITHOUT calling the loader (negative cache in effect; poisoned token gone).
+        await #expect(throws: CredentialsError.notFound) {
+            _ = try await cache.credentials()
+        }
+        #expect(callCount == 2)  // loader count pinned — no re-prompt
+    }
 }

@@ -21,8 +21,11 @@ public enum CredentialsParser {
               !token.isEmpty else {
             throw CredentialsError.unreadable
         }
-        // expiresAt is kept for diagnostics only; expiry is enforced by the
-        // server (401 → stale state), never checked locally.
+        // expiresAt is kept for diagnostics and the file-store expiry check
+        // (isUsable). Keychain tokens are passed through without expiry checking —
+        // Claude Code keeps them fresh; local metadata may be stale. Only file-store
+        // tokens have their expiry checked (expired file token → .notFound so the UI
+        // shows the sign-in hint rather than spinning on guaranteed-401 requests).
         let expiresAt: Date?
         if let number = oauth["expiresAt"] as? NSNumber,
            CFGetTypeID(number) != CFBooleanGetTypeID() {

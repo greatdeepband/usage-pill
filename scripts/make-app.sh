@@ -10,7 +10,7 @@ cp scripts/Info.plist "$APP/Contents/"
 # Prefer the stable local identity (scripts/make-signing-cert.sh) so the
 # keychain "Always Allow" decision survives rebuilds; fall back to ad-hoc.
 IDENTITY="Claude Usage Pill Dev"
-if security find-identity -v -p codesigning 2>/dev/null | grep -q "$IDENTITY"; then
+if security find-identity -v -p codesigning 2>/dev/null | grep -qF "\"$IDENTITY\""; then
     codesign --force -s "$IDENTITY" "$APP"
     echo "Signed with stable identity: $IDENTITY"
 else

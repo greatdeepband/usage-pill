@@ -22,7 +22,10 @@ public enum UsageRequestBuilder {
     public static func mapStatus(_ code: Int) -> FetchError? {
         switch code {
         case 200..<300: return nil
-        case 401, 403: return .unauthorized
+        // 401 = expired/rotated token → reload keychain and retry once.
+        // 403 = scope/policy refusal — reloading the keychain cannot fix it;
+        //       treating it as unauthorized would re-prompt every 10 min forever.
+        case 401: return .unauthorized
         default: return .badResponse(code)
         }
     }
