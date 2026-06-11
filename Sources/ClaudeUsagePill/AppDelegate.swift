@@ -11,6 +11,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var menuBar: MenuBarController!
     private var themeStore: ThemeStore!
     private var identityModel: IdentityModel!
+    private var settingsController: SettingsWindowController!
     private var cancellables = Set<AnyCancellable>()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -22,6 +23,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         themeStore = ThemeStore()
         let profileFetcher = ProfileFetcher(cache: cache)
         identityModel = IdentityModel(cache: cache, fetchProfile: { try await profileFetcher.fetch() })
+        settingsController = SettingsWindowController(store: themeStore, identity: identityModel)
 
         panel = PillPanel()
         panel.contentView = NSHostingView(
@@ -61,6 +63,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         ) { [weak self] _ in
             Task { @MainActor in await self?.model.refresh() }
         }
-        menuBar = MenuBarController(model: model)
+        menuBar = MenuBarController(model: model, onOpenSettings: { [weak self] in self?.settingsController.show() })
     }
 }
