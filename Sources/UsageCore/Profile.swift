@@ -38,9 +38,19 @@ public struct ProfileFetcher: Sendable {
     private let cache: CredentialsCache
     private let session: URLSession
 
-    public init(cache: CredentialsCache, session: URLSession = .shared) {
+    /// Profile responses contain the user's email; they must never be written
+    /// to disk. The default session is ephemeral with caching disabled so the
+    /// "email is cached in memory only" guarantee holds regardless of wiring.
+    private static let nonPersistingSession: URLSession = {
+        let config = URLSessionConfiguration.ephemeral
+        config.urlCache = nil
+        config.requestCachePolicy = .reloadIgnoringLocalCacheData
+        return URLSession(configuration: config)
+    }()
+
+    public init(cache: CredentialsCache, session: URLSession? = nil) {
         self.cache = cache
-        self.session = session
+        self.session = session ?? Self.nonPersistingSession
     }
 
     public func fetch() async throws -> Profile {
@@ -48,7 +58,7 @@ public struct ProfileFetcher: Sendable {
         do {
             return try await fetchOnce(token: creds.accessToken)
         } catch FetchError.unauthorized {
-            if let fresh = try await cache.reloadAfterUnauthorized() {
+            if let fresh = try await cache.reloadAfterUnauthorized(tokenUsed: creds.accessToken) {
                 return try await fetchOnce(token: fresh.accessToken)
             }
             throw FetchError.unauthorized

@@ -47,7 +47,7 @@ public struct UsageFetcher: Sendable {
             return try await fetchOnce(token: creds.accessToken)
         } catch FetchError.unauthorized {
             // Token may have rotated; ask the cache to reload (throttled).
-            if let fresh = try await cache.reloadAfterUnauthorized() {
+            if let fresh = try await cache.reloadAfterUnauthorized(tokenUsed: creds.accessToken) {
                 return try await fetchOnce(token: fresh.accessToken)
             }
             throw FetchError.unauthorized

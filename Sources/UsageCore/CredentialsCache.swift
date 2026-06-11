@@ -61,11 +61,19 @@ public actor CredentialsCache {
     /// returns nil when throttled or when the reloaded token is identical —
     /// in both cases a retry would be pointless.
     ///
+    /// Short-circuit: if `cached?.accessToken` already differs from `tokenUsed`,
+    /// another concurrent caller already completed a reload — return the current
+    /// cached token immediately without touching the loader or the throttle.
+    ///
     /// On a throwing reload, drops the cached token (so the UI shows the
     /// sign-in state instead of flapping between stale/unauthorized) and
     /// negative-caches the failure so the next poll's `credentials()` does
     /// not immediately re-prompt.
-    public func reloadAfterUnauthorized() throws -> OAuthCredentials? {
+    public func reloadAfterUnauthorized(tokenUsed: String) throws -> OAuthCredentials? {
+        // Short-circuit: another caller already rotated the token.
+        if let current = cached, current.accessToken != tokenUsed {
+            return current
+        }
         if let last = lastForcedReload, now().timeIntervalSince(last) < reloadThrottle {
             return nil
         }

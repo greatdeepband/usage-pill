@@ -62,7 +62,7 @@ struct ProfileFetcherStubbedTransportTests {
     // 1. Every response 401, loader returns same token → reloadAfterUnauthorized
     //    returns nil (token unchanged) → throws FetchError.unauthorized, 1 request.
     @Test func profile401WithStableTokenThrowsUnauthorized() async throws {
-        var requestCount = 0
+        nonisolated(unsafe) var requestCount = 0
         ProfileStubProtocol.handler = { _ in
             requestCount += 1
             return (Data(), makeProfileResponse(statusCode: 401))
@@ -77,8 +77,8 @@ struct ProfileFetcherStubbedTransportTests {
     // 2. 401 then 200 with valid body, loader rotates tokenA→tokenB →
     //    returns Profile(email: "a@b.c"), 2 requests, second carries "Bearer tokenB".
     @Test func profile401WithRotatedTokenRetriesOnce() async throws {
-        var requestCount = 0
-        var observedAuthHeaders: [String] = []
+        nonisolated(unsafe) var requestCount = 0
+        nonisolated(unsafe) var observedAuthHeaders: [String] = []
 
         ProfileStubProtocol.handler = { req in
             requestCount += 1
@@ -110,7 +110,7 @@ struct ProfileFetcherStubbedTransportTests {
 
     // 3. Loader throws CredentialsError.notFound → fetch() throws CredentialsError, 0 network requests.
     @Test func profileCredentialErrorPropagates() async throws {
-        var networkHit = false
+        nonisolated(unsafe) var networkHit = false
         ProfileStubProtocol.handler = { _ in
             networkHit = true
             return (Data(), makeProfileResponse(statusCode: 200))
