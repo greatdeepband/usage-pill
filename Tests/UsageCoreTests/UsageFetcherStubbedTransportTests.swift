@@ -165,6 +165,32 @@ struct UsageFetcherLiveTests {
         #expect(requestCount == 2)
     }
 
+    // (i) 429 without Retry-After header → throws FetchError.rateLimited(retryAfter: nil)
+    @Test func returns429AsRateLimitedNoHeader() async throws {
+        StubProtocol.handler = { _ in (Data(), makeResponse(statusCode: 429)) }
+        let fetcher = UsageFetcher(cache: makeCache(), session: makeSession())
+        await #expect(throws: FetchError.rateLimited(retryAfter: nil)) {
+            _ = try await fetcher.fetch()
+        }
+    }
+
+    // (j) 429 with Retry-After: 120 → throws FetchError.rateLimited(retryAfter: 120)
+    @Test func returns429WithRetryAfterHeader() async throws {
+        StubProtocol.handler = { _ in
+            let response = HTTPURLResponse(
+                url: URL(string: "https://api.anthropic.com/api/oauth/usage")!,
+                statusCode: 429,
+                httpVersion: nil,
+                headerFields: ["Retry-After": "120"]
+            )!
+            return (Data(), response)
+        }
+        let fetcher = UsageFetcher(cache: makeCache(), session: makeSession())
+        await #expect(throws: FetchError.rateLimited(retryAfter: 120)) {
+            _ = try await fetcher.fetch()
+        }
+    }
+
     // (g) 401 with unchanged token → throws FetchError.unauthorized after exactly ONE network request
     @Test func noRetryWhenTokenUnchanged() async throws {
         var requestCount = 0

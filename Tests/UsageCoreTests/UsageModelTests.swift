@@ -70,6 +70,7 @@ private final class ResultBox: @unchecked Sendable {
         (FetchError.badResponse(500), .network),
         (FetchError.network, .network),
         (FetchError.undecodable, .network),
+        (FetchError.rateLimited(retryAfter: nil), .rateLimited),
     ] {
         let model = makeModel(results: [.failure(error)], now: { Date(timeIntervalSince1970: 0) })
         await model.refresh()
@@ -205,6 +206,97 @@ private final class ResultBox: @unchecked Sendable {
     gateActive.increment()
     await model.refresh()
     #expect(model.status == .ok)
+}
+
+@Test @MainActor func rateLimitedSetsBackoffAndSkipsPolls() async {
+    let clock = ClockBox(Date(timeIntervalSince1970: 0))
+    let results: [Result<UsageSnapshot, Error>] = [
+        .failure(FetchError.rateLimited(retryAfter: 200)),
+        .success(snapA)
+    ]
+    let (model, callCount) = makeModelCounted(results: results, now: { clock.now })
+
+    // t=0: first refresh → rate limited
+    await model.refresh()
+    #expect(model.status == .stale(reason: .rateLimited))
+    #expect(callCount() == 1)
+
+    // t=+100s: backoff window (200s) not elapsed → silently skipped
+    clock.now = Date(timeIntervalSince1970: 100)
+    await model.refresh()
+    #expect(model.status == .stale(reason: .rateLimited))
+    #expect(callCount() == 1) // still 1 — fetch NOT called
+
+    // t=+201s: backoff elapsed → fetch called → success
+    clock.now = Date(timeIntervalSince1970: 201)
+    await model.refresh()
+    #expect(model.status == .ok)
+    #expect(callCount() == 2)
+}
+
+@Test @MainActor func rateLimitedDefaultBackoffIs300() async {
+    let clock = ClockBox(Date(timeIntervalSince1970: 0))
+    let results: [Result<UsageSnapshot, Error>] = [
+        .failure(FetchError.rateLimited(retryAfter: nil)), // no Retry-After → default 300s
+        .success(snapA)
+    ]
+    let (model, callCount) = makeModelCounted(results: results, now: { clock.now })
+
+    await model.refresh()
+    #expect(model.status == .stale(reason: .rateLimited))
+
+    // +299s: still in backoff
+    clock.now = Date(timeIntervalSince1970: 299)
+    await model.refresh()
+    #expect(model.status == .stale(reason: .rateLimited))
+    #expect(callCount() == 1)
+
+    // +301s: backoff expired → success
+    clock.now = Date(timeIntervalSince1970: 301)
+    await model.refresh()
+    #expect(model.status == .ok)
+    #expect(callCount() == 2)
+}
+
+@Test @MainActor func successClearsBackoff() async {
+    let clock = ClockBox(Date(timeIntervalSince1970: 0))
+    let results: [Result<UsageSnapshot, Error>] = [
+        .failure(FetchError.rateLimited(retryAfter: 300)),
+        .success(snapA),
+        .success(snapA)
+    ]
+    let (model, callCount) = makeModelCounted(results: results, now: { clock.now })
+
+    // Get rate limited
+    await model.refresh()
+    #expect(model.status == .stale(reason: .rateLimited))
+
+    // Wait out backoff, recover
+    clock.now = Date(timeIntervalSince1970: 301)
+    await model.refresh()
+    #expect(model.status == .ok)
+
+    // backoffUntil should be cleared → immediate subsequent refresh works (no skip)
+    await model.refresh()
+    #expect(model.status == .ok)
+    #expect(callCount() == 3) // all 3 fetches happened
+}
+
+// MARK: - Private helpers
+
+/// Wraps ResultBox and counts how many times the fetch closure is called.
+@MainActor
+private func makeModelCounted(
+    results: [Result<UsageSnapshot, Error>],
+    now: @escaping @Sendable () -> Date
+) -> (UsageModel, () -> Int) {
+    let box = ResultBox(results)
+    var count = 0
+    let model = UsageModel(fetch: {
+        count += 1
+        return try box.next()
+    }, now: now)
+    return (model, { count })
 }
 
 private final class ClockBox: @unchecked Sendable {

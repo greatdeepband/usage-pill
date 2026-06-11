@@ -4,7 +4,7 @@ import Combine
 @MainActor
 public final class UsageModel: ObservableObject {
     public enum StaleReason: Equatable, Sendable {
-        case noCredentials, unauthorized, network
+        case noCredentials, unauthorized, network, rateLimited
     }
 
     public enum Status: Equatable, Sendable {
@@ -20,6 +20,7 @@ public final class UsageModel: ObservableObject {
     private let fetch: @MainActor () async throws -> UsageSnapshot
     private let now: @Sendable () -> Date
     private var inFlight = false
+    private var backoffUntil: Date?
 
     public init(
         fetch: @escaping @MainActor () async throws -> UsageSnapshot,
@@ -30,6 +31,10 @@ public final class UsageModel: ObservableObject {
     }
 
     public func refresh() async {
+        // Backoff guard: if we're in the backoff window, silently skip —
+        // keeps the existing status unchanged until the window expires.
+        if let until = backoffUntil, now() < until { return }
+
         // Coalesce: a refresh arriving while one is in flight is dropped —
         // the in-flight result is at most seconds old.
         guard !inFlight else { return }
@@ -40,11 +45,17 @@ public final class UsageModel: ObservableObject {
             snapshot = snap
             lastSuccess = now()
             status = .ok
+            backoffUntil = nil  // clear backoff on success
         } catch is CancellationError {
             // Mid-flight cancellation (app teardown): leave state untouched —
             // it is neither fresh data nor a network problem.
         } catch is CredentialsError {
             status = .stale(reason: .noCredentials)
+        } catch FetchError.rateLimited(let retryAfter) {
+            // Default 5 min, floor 2 min, cap 1 h.
+            let delay = min(max(retryAfter ?? 300, 120), 3600)
+            backoffUntil = now().addingTimeInterval(delay)
+            status = .stale(reason: .rateLimited)
         } catch let error as FetchError {
             status = .stale(reason: error == .unauthorized ? .unauthorized : .network)
         } catch {

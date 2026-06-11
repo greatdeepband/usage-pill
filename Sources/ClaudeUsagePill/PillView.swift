@@ -131,9 +131,14 @@ struct PillView: View {
 
     private var footer: some View {
         HStack {
-            if case .stale(let reason) = model.status, reason == .noCredentials {
-                Text("open Claude Code to sign in")
-                    .font(.system(size: 9.5)).foregroundStyle(Dusk.amber.opacity(0.9))
+            if case .stale(let reason) = model.status {
+                if reason == .noCredentials {
+                    Text("open Claude Code to sign in")
+                        .font(.system(size: 9.5)).foregroundStyle(Dusk.amber.opacity(0.9))
+                } else if reason == .rateLimited {
+                    Text("rate limited — retrying later")
+                        .font(.system(size: 9.5)).foregroundStyle(Dusk.amber.opacity(0.9))
+                }
             }
             Spacer()
             Text(model.secondsSinceSuccess().map(CountdownFormatter.updatedAgo) ?? "no data yet")

@@ -6,6 +6,7 @@ public enum FetchError: Error, Equatable {
     case badResponse(Int)
     case network
     case undecodable
+    case rateLimited(retryAfter: TimeInterval?)
 }
 
 public enum UsageRequestBuilder {
@@ -26,8 +27,19 @@ public enum UsageRequestBuilder {
         // 403 = scope/policy refusal — reloading the keychain cannot fix it;
         //       treating it as unauthorized would re-prompt every 10 min forever.
         case 401: return .unauthorized
+        case 429: return .rateLimited(retryAfter: nil)
         default: return .badResponse(code)
         }
+    }
+
+    /// Parses a `Retry-After` header value (seconds form only).
+    /// HTTP-date strings (e.g. "Wed, 21 Oct 2015 07:28:00 GMT") return nil.
+    /// Zero and negative values return nil.
+    public static func retryAfterSeconds(from value: String?) -> TimeInterval? {
+        guard let value else { return nil }
+        guard let seconds = Int(value.trimmingCharacters(in: .whitespaces)) else { return nil }
+        guard seconds > 0 else { return nil }
+        return TimeInterval(seconds)
     }
 }
 
@@ -74,6 +86,12 @@ public struct UsageFetcher: Sendable {
         }
         if let err = UsageRequestBuilder.mapStatus(http.statusCode) {
             Self.log.warning("usage endpoint HTTP \(http.statusCode)")
+            if case .rateLimited = err {
+                let retryAfter = UsageRequestBuilder.retryAfterSeconds(
+                    from: http.value(forHTTPHeaderField: "Retry-After")
+                )
+                throw FetchError.rateLimited(retryAfter: retryAfter)
+            }
             throw err
         }
         do {
