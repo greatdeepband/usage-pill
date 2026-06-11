@@ -30,10 +30,12 @@ public final class UsageModel: ObservableObject {
         self.now = now
     }
 
-    public func refresh() async {
+    /// `force` bypasses the rate-limit backoff window — used by the user's
+    /// explicit "Refresh Now"; automatic polls must leave it false.
+    public func refresh(force: Bool = false) async {
         // Backoff guard: if we're in the backoff window, silently skip —
         // keeps the existing status unchanged until the window expires.
-        if let until = backoffUntil, now() < until { return }
+        if !force, let until = backoffUntil, now() < until { return }
 
         // Coalesce: a refresh arriving while one is in flight is dropped —
         // the in-flight result is at most seconds old.

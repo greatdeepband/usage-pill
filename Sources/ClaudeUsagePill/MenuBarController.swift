@@ -35,7 +35,8 @@ final class MenuBarController: NSObject {
     }
 
     @objc private func refresh() {
-        Task { @MainActor in await model.refresh() }
+        // Explicit user intent overrides the rate-limit backoff window.
+        Task { @MainActor in await model.refresh(force: true) }
     }
 
     @objc private func toggleLogin() {

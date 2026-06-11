@@ -308,3 +308,18 @@ private final class CallCounter: @unchecked Sendable {
     private(set) var count = 0
     func increment() { count += 1 }
 }
+
+@Test @MainActor func forcedRefreshBypassesBackoff() async {
+    let clock = ClockBox(Date(timeIntervalSince1970: 0))
+    let model = makeModel(
+        results: [.failure(FetchError.rateLimited(retryAfter: 300)), .success(snapA)],
+        now: { clock.now }
+    )
+    await model.refresh()
+    #expect(model.status == .stale(reason: .rateLimited))
+    clock.now = Date(timeIntervalSince1970: 60) // still inside the window
+    await model.refresh()
+    #expect(model.status == .stale(reason: .rateLimited)) // auto poll skipped
+    await model.refresh(force: true)
+    #expect(model.status == .ok) // user intent wins
+}
