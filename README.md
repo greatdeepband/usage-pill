@@ -17,14 +17,18 @@ Hover to expand it into a card with reset countdowns and data freshness.
 ## Build & install
 
 ```bash
+./scripts/make-signing-cert.sh   # one-time: stable signing identity (one password prompt)
 ./scripts/make-app.sh
 cp -R "build/Claude Usage Pill.app" /Applications/
 open "/Applications/Claude Usage Pill.app"
 ```
 
-Approve the keychain prompt with **Always Allow** (it re-appears once per
-rebuild — each build has a fresh ad-hoc signature). Enable **Launch at Login**
-from the gauge icon in the menu bar (works only from /Applications).
+On first launch, approve the keychain prompt with **Always Allow**. Thanks to
+the stable signing identity, that decision survives rebuilds — those two
+prompts (cert trust + Always Allow) are the only ones you will ever see.
+Without the cert step, builds are ad-hoc signed and each rebuild re-asks.
+Enable **Launch at Login** from the gauge icon in the menu bar (works only
+from /Applications). Version history: see [CHANGELOG.md](CHANGELOG.md).
 
 ## Develop
 
