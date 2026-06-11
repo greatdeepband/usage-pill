@@ -44,7 +44,7 @@ private func makeToken(_ id: String) -> OAuthCredentials {
         let initial = try await cache.credentials()
         #expect(initial.accessToken == "tokenA")
 
-        let reloaded = try await cache.reloadAfterUnauthorized()
+        let reloaded = try await cache.reloadAfterUnauthorized(tokenUsed: initial.accessToken)
         #expect(reloaded?.accessToken == "tokenB")
     }
 
@@ -54,7 +54,7 @@ private func makeToken(_ id: String) -> OAuthCredentials {
     @Test func reloadReturnsNilWhenTokenUnchanged() async throws {
         let cache = CredentialsCache(load: { makeToken("tokenA") })
         _ = try await cache.credentials()
-        let result = try await cache.reloadAfterUnauthorized()
+        let result = try await cache.reloadAfterUnauthorized(tokenUsed: "tokenA")
         #expect(result == nil)
     }
 
@@ -81,19 +81,20 @@ private func makeToken(_ id: String) -> OAuthCredentials {
         // callCount == 1 here
 
         // First forced reload at t=0: returns token2 (rotated)
-        let first = try await cache.reloadAfterUnauthorized()
+        let first = try await cache.reloadAfterUnauthorized(tokenUsed: "token1")
         #expect(first?.accessToken == "token2")
         let countAfterFirst = callCount  // should be 2
 
-        // Immediately second reload (still t=0): throttled → nil, loader NOT called
-        let second = try await cache.reloadAfterUnauthorized()
+        // Immediately second reload (still t=0): caller already has token2, no
+        // short-circuit applies; throttle kicks in → nil, loader NOT called.
+        let second = try await cache.reloadAfterUnauthorized(tokenUsed: "token2")
         #expect(second == nil)
         #expect(callCount == countAfterFirst) // loader was NOT hit
 
         // Advance clock past throttle window
         clockOffset = 601
         // Third reload: throttle expired, loader called → returns token3
-        let third = try await cache.reloadAfterUnauthorized()
+        let third = try await cache.reloadAfterUnauthorized(tokenUsed: "token2")
         #expect(third?.accessToken == "token3")
         #expect(callCount == countAfterFirst + 1)
     }
@@ -147,7 +148,37 @@ private func makeToken(_ id: String) -> OAuthCredentials {
         #expect(callCount == 2)
     }
 
-    // 7. throwingForcedReloadDropsCacheAndNegativeCaches
+    // 7. reloadShortCircuitsWhenAnotherCallerAlreadyRotated
+    // If another concurrent caller already reloaded a rotated token, a second
+    // caller still holding the old token should get the already-rotated token
+    // back immediately — without hitting the loader or consuming the throttle.
+    @Test func reloadShortCircuitsWhenAnotherCallerAlreadyRotated() async throws {
+        nonisolated(unsafe) var loaderCallCount = 0
+        let tokens = ["tokenA", "tokenB"]
+        let cache = CredentialsCache(load: {
+            let t = tokens[min(loaderCallCount, tokens.count - 1)]
+            loaderCallCount += 1
+            return makeToken(t)
+        })
+
+        // caller 1: credentials() → tokenA (loader call #1)
+        let credsA = try await cache.credentials()
+        #expect(credsA.accessToken == "tokenA")
+        #expect(loaderCallCount == 1)
+
+        // caller 1: reloadAfterUnauthorized(tokenUsed: "tokenA") → tokenB (loader call #2)
+        let reloaded = try await cache.reloadAfterUnauthorized(tokenUsed: "tokenA")
+        #expect(reloaded?.accessToken == "tokenB")
+        #expect(loaderCallCount == 2)
+
+        // caller 2 (still holding tokenA): short-circuit — cached is tokenB ≠ tokenA
+        // → returns tokenB immediately without calling the loader again.
+        let shortCircuited = try await cache.reloadAfterUnauthorized(tokenUsed: "tokenA")
+        #expect(shortCircuited?.accessToken == "tokenB")
+        #expect(loaderCallCount == 2)  // loader NOT called a third time
+    }
+
+    // 8. throwingForcedReloadDropsCacheAndNegativeCaches
     // When reloadAfterUnauthorized() throws, the cached token is dropped and
     // the failure is negative-cached so the next credentials() call within the
     // window throws immediately without calling the loader — no re-prompt.
@@ -173,7 +204,7 @@ private func makeToken(_ id: String) -> OAuthCredentials {
 
         // Forced reload at t=0: loader throws; poisoned token is dropped.
         await #expect(throws: CredentialsError.notFound) {
-            _ = try await cache.reloadAfterUnauthorized()
+            _ = try await cache.reloadAfterUnauthorized(tokenUsed: "tokenA")
         }
         #expect(callCount == 2)
 

@@ -14,7 +14,14 @@ Hover to expand it into a card with reset countdowns and data freshness.
 - Refreshes every 60 s, on wake from sleep, and on demand from the menu bar.
 - Drag it anywhere; the position survives restarts and display changes.
 - Bars turn muted amber at 80% and soft red at 95%.
-- Native Swift, no dependencies, ~20 MB RAM, 54 unit tests.
+- **Themeable**: Settings (menu bar → Settings…) offers Dusk/Mist/Sage
+  presets and fully custom bar colors with a live preview.
+- **Optional account & plan display** (default off): the expanded card can
+  show your account email and plan badge — never the compact pill, and the
+  email is kept in memory only.
+- Plays nice with the API: backs off politely when rate-limited and refuses
+  to run as multiple instances.
+- Native Swift, no dependencies, ~20 MB RAM, 87 unit tests.
 
 ## Requirements
 
@@ -56,7 +63,7 @@ from /Applications). Version history: see [CHANGELOG.md](CHANGELOG.md).
 ## Develop
 
 ```bash
-swift test          # 54 unit tests (decoding, credentials, state machine, formatting, geometry)
+swift test          # 87 unit tests (decoding, credentials, state machine, formatting, geometry)
 swift build && .build/debug/ClaudeUsagePill
 ```
 

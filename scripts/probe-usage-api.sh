@@ -19,3 +19,16 @@ printf 'header = "Authorization: Bearer %s"\n' "$TOKEN" | curl -sS --config - \
   https://api.anthropic.com/api/oauth/usage \
   -H "anthropic-beta: oauth-2025-04-20" \
   -H "Content-Type: application/json" | /usr/bin/python3 -m json.tool
+echo "--- profile endpoint response (key structure only, values redacted) ---"
+printf 'header = "Authorization: Bearer %s"\n' "$TOKEN" | curl -sS --config - \
+  https://api.anthropic.com/api/oauth/profile \
+  -H "anthropic-beta: oauth-2025-04-20" \
+  -H "Content-Type: application/json" | /usr/bin/python3 -c '
+import sys, json
+def walk(o, p=""):
+    if isinstance(o, dict):
+        for k, v in o.items(): walk(v, f"{p}.{k}")
+    elif isinstance(o, list):
+        print(f"{p}: list[{len(o)}]")
+    else: print(f"{p}: {type(o).__name__}")
+walk(json.load(sys.stdin))'

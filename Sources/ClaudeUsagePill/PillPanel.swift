@@ -4,7 +4,17 @@ import UsageCore
 final class PillPanel: NSPanel {
     static let compactSize = NSSize(width: 250, height: 50)
     static let expandedSize = NSSize(width: 250, height: 132)
+    static let identityExtraHeight: CGFloat = 18
     private static let originKey = "pillTopLeft"
+
+    /// Set by AppDelegate when the identity toggle changes.
+    var identityEnabled = false
+
+    private var currentExpandedSize: NSSize {
+        var s = Self.expandedSize
+        if identityEnabled { s.height += Self.identityExtraHeight }
+        return s
+    }
 
     /// When true, `saveLocation()` is a no-op.  Set during any programmatic
     /// reposition so system-induced moves never overwrite the user's saved top-left.
@@ -48,7 +58,7 @@ final class PillPanel: NSPanel {
         // thread until the animation completes (verified empirically); if this is ever
         // switched to non-blocking animator() animation, replace the guard with an
         // explicit desired-state flag.
-        let size = expanded ? Self.expandedSize : Self.compactSize
+        let size = expanded ? currentExpandedSize : Self.compactSize
         guard frame.size != size else { return }
         var f = frame
         let top = f.origin.y + f.size.height

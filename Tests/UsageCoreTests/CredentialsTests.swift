@@ -52,3 +52,17 @@ import Testing
         }
     }
 }
+
+@Test func parsesPlanFields() throws {
+    let json = #"{"claudeAiOauth":{"accessToken":"sk-ant-oat01-abc","subscriptionType":"max","rateLimitTier":"default_max_20x"}}"#
+    let creds = try CredentialsParser.parse(Data(json.utf8))
+    #expect(creds.subscriptionType == "max")
+    #expect(creds.rateLimitTier == "default_max_20x")
+}
+
+@Test func planFieldsAreOptional() throws {
+    let json = #"{"claudeAiOauth":{"accessToken":"sk-ant-oat01-abc"}}"#
+    let creds = try CredentialsParser.parse(Data(json.utf8))
+    #expect(creds.subscriptionType == nil)
+    #expect(creds.rateLimitTier == nil)
+}

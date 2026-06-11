@@ -1,5 +1,26 @@
 # Changelog
 
+## v1.2 — 2026-06-11
+
+Themes, identity display, and rate-limit resilience.
+
+- **Settings window** (menu bar → Settings…): live preview, three palette
+  presets — Dusk (default), Mist, Sage — plus native color wells for fully
+  custom session/week bar colors. Changes apply instantly and persist.
+  Warning amber (≥80%) and critical red (≥95%) remain fixed by design.
+- **Account & plan display (optional, default off):** the hover-expanded card
+  can show your account email and plan badge (e.g. "MAX 5×") in a header
+  strip. The compact pill never shows it; the email lives in memory only —
+  never written to disk, never logged, fetched only while the toggle is on.
+- **Rate-limit resilience:** HTTP 429 now triggers a polite backoff
+  (Retry-After-aware, 2–60 min) with a "rate limited — retrying later"
+  footer note; Refresh Now deliberately overrides the backoff.
+- **Single-instance guard:** launching a second copy defers to the running
+  one (deterministic launch-date tiebreak), preventing accidental
+  poll-storms from multiple instances.
+- Credentials continue to flow through the one shared in-memory cache — no
+  new keychain prompts for any of the above.
+
 ## v1.1 — 2026-06-11
 
 Fixes the password-prompt storm reported after v1.0 rebuilds.

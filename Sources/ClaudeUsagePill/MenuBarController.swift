@@ -6,9 +6,11 @@ import UsageCore
 final class MenuBarController: NSObject {
     private var statusItem: NSStatusItem!
     private let model: UsageModel
+    private let onOpenSettings: () -> Void
 
-    init(model: UsageModel) {
+    init(model: UsageModel, onOpenSettings: @escaping () -> Void) {
         self.model = model
+        self.onOpenSettings = onOpenSettings
         super.init()
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         statusItem.button?.image = NSImage(
@@ -19,10 +21,13 @@ final class MenuBarController: NSObject {
         refreshItem.target = self
         let loginItem = NSMenuItem(title: "Launch at Login", action: #selector(toggleLogin), keyEquivalent: "")
         loginItem.target = self
+        let settingsItem = NSMenuItem(title: "Settings…", action: #selector(openSettings), keyEquivalent: ",")
+        settingsItem.target = self
         let quitItem = NSMenuItem(title: "Quit Claude Usage Pill", action: #selector(quit), keyEquivalent: "q")
         quitItem.target = self
         menu.addItem(refreshItem)
         menu.addItem(loginItem)
+        menu.addItem(settingsItem)
         menu.addItem(.separator())
         menu.addItem(quitItem)
         menu.delegate = self
@@ -30,7 +35,8 @@ final class MenuBarController: NSObject {
     }
 
     @objc private func refresh() {
-        Task { @MainActor in await model.refresh() }
+        // Explicit user intent overrides the rate-limit backoff window.
+        Task { @MainActor in await model.refresh(force: true) }
     }
 
     @objc private func toggleLogin() {
@@ -56,6 +62,8 @@ final class MenuBarController: NSObject {
             NSAlert(error: error).runModal()
         }
     }
+
+    @objc private func openSettings() { onOpenSettings() }
 
     @objc private func quit() { NSApp.terminate(nil) }
 }

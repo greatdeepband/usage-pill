@@ -18,6 +18,8 @@ enum Dusk {
 
 struct PillView: View {
     @ObservedObject var model: UsageModel
+    @ObservedObject var theme: ThemeStore
+    @ObservedObject var identity: IdentityModel
     var onExpandChange: (Bool) -> Void
 
     @State private var expanded = false
@@ -30,6 +32,7 @@ struct PillView: View {
             .onHover { hovering in
                 withAnimation(.easeInOut(duration: 0.18)) { expanded = hovering }
                 onExpandChange(hovering)
+                if hovering && theme.showIdentity { identity.loadIfNeeded() }
             }
             .onReceive(tick) { now = $0 }
     }
@@ -37,13 +40,16 @@ struct PillView: View {
     @ViewBuilder private var content: some View {
         let shape: AnyShape = expanded ? AnyShape(RoundedRectangle(cornerRadius: 18)) : AnyShape(Capsule())
         VStack(alignment: .leading, spacing: expanded ? 10 : 6) {
+            if expanded && theme.showIdentity && (identity.email != nil || identity.planBadge != nil) {
+                identityStrip
+            }
             barRow(
-                window: model.snapshot?.session, base: Dusk.clay, symbol: "clock",
+                window: model.snapshot?.session, base: Color(themeHex: theme.theme.sessionHex), symbol: "clock",
                 label: "Session",
                 resetText: CountdownFormatter.remaining(until: model.snapshot?.session?.resetsAt, now: now)
             )
             barRow(
-                window: model.snapshot?.week, base: Dusk.dustyBlue, symbol: "calendar",
+                window: model.snapshot?.week, base: Color(themeHex: theme.theme.weekHex), symbol: "calendar",
                 label: "Week",
                 resetText: CountdownFormatter.weekReset(model.snapshot?.week?.resetsAt, now: now)
             )
@@ -61,6 +67,24 @@ struct PillView: View {
         .clipShape(shape)
         .overlay(shape.stroke(.white.opacity(0.12), lineWidth: 1))
         .opacity(model.status == .stale(reason: .unauthorized) ? 0.75 : 1)
+    }
+
+    private var identityStrip: some View {
+        VStack(spacing: 7) {
+            HStack {
+                Text(identity.email ?? "")
+                    .font(.system(size: 9.5))
+                    .foregroundStyle(.white.opacity(0.55))
+                    .lineLimit(1).truncationMode(.middle)
+                Spacer(minLength: 8)
+                if let badge = identity.planBadge {
+                    Text(badge)
+                        .font(.system(size: 9.5, weight: .semibold))
+                        .foregroundStyle(Color(themeHex: theme.theme.sessionHex))
+                }
+            }
+            Rectangle().fill(.white.opacity(0.08)).frame(height: 1)
+        }
     }
 
     @ViewBuilder
@@ -107,9 +131,14 @@ struct PillView: View {
 
     private var footer: some View {
         HStack {
-            if case .stale(let reason) = model.status, reason == .noCredentials {
-                Text("open Claude Code to sign in")
-                    .font(.system(size: 9.5)).foregroundStyle(Dusk.amber.opacity(0.9))
+            if case .stale(let reason) = model.status {
+                if reason == .noCredentials {
+                    Text("open Claude Code to sign in")
+                        .font(.system(size: 9.5)).foregroundStyle(Dusk.amber.opacity(0.9))
+                } else if reason == .rateLimited {
+                    Text("rate limited — retrying later")
+                        .font(.system(size: 9.5)).foregroundStyle(Dusk.amber.opacity(0.9))
+                }
             }
             Spacer()
             Text(model.secondsSinceSuccess().map(CountdownFormatter.updatedAgo) ?? "no data yet")
