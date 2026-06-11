@@ -19,14 +19,18 @@ struct SettingsView: View {
                 Text("Custom colors")
                     .font(.caption.weight(.medium))
                     .foregroundStyle(.secondary)
-                Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 8) {
-                    GridRow {
+                // Full-width rows: label leading, control flush right —
+                // aligned with the preview's right edge.
+                VStack(spacing: 8) {
+                    HStack {
                         Text("Session bar")
+                        Spacer()
                         ColorPicker("", selection: binding(\.sessionHex, set: store.setSessionHex))
                             .labelsHidden()
                     }
-                    GridRow {
+                    HStack {
                         Text("Week bar")
+                        Spacer()
                         ColorPicker("", selection: binding(\.weekHex, set: store.setWeekHex))
                             .labelsHidden()
                     }
@@ -36,8 +40,13 @@ struct SettingsView: View {
             Divider()
 
             VStack(alignment: .leading, spacing: 3) {
-                Toggle("Show account & plan", isOn: $store.showIdentity)
-                    .toggleStyle(.switch)
+                HStack {
+                    Text("Show account & plan")
+                    Spacer()
+                    Toggle("", isOn: $store.showIdentity)
+                        .toggleStyle(.switch)
+                        .labelsHidden()
+                }
                 Text("Appears only in the hover-expanded card.")
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
@@ -71,10 +80,15 @@ struct SettingsView: View {
     }
 
     private var swatchRow: some View {
-        HStack(spacing: 10) {
-            ForEach(Palette.allCases.filter { $0 != .custom }, id: \.self) { p in
-                swatch(for: p)
-            }
+        // First swatch flush left, Custom flush right (matching the preview's
+        // borders), the rest distributed evenly between.
+        HStack(spacing: 0) {
+            swatch(for: .dusk)
+            Spacer()
+            swatch(for: .mist)
+            Spacer()
+            swatch(for: .sage)
+            Spacer()
             customSwatch
         }
     }
@@ -87,11 +101,11 @@ struct SettingsView: View {
             ZStack {
                 Color(red: 28 / 255, green: 30 / 255, blue: 38 / 255) // so Mist's translucency reads
                 VStack(spacing: 5) {
-                    Capsule().fill(Color(themeHex: t.sessionHex)).frame(width: 30, height: 5)
-                    Capsule().fill(Color(themeHex: t.weekHex)).frame(width: 30, height: 5)
+                    Capsule().fill(Color(themeHex: t.sessionHex)).frame(width: 38, height: 5)
+                    Capsule().fill(Color(themeHex: t.weekHex)).frame(width: 38, height: 5)
                 }
             }
-            .frame(width: 52, height: 28)
+            .frame(width: 60, height: 28)
             .clipShape(RoundedRectangle(cornerRadius: 6))
             .overlay(
                 RoundedRectangle(cornerRadius: 6)
@@ -111,7 +125,7 @@ struct SettingsView: View {
                     .font(.system(size: 11))
                     .foregroundStyle(.white.opacity(0.6))
             }
-            .frame(width: 52, height: 28)
+            .frame(width: 60, height: 28)
             .clipShape(RoundedRectangle(cornerRadius: 6))
             .overlay(
                 RoundedRectangle(cornerRadius: 6)
