@@ -2,6 +2,31 @@ import Foundation
 import Testing
 @testable import UsageCore
 
+// ---------------------------------------------------------------------------
+// CredentialsParser.isUsable — pure expiry check, no keychain or filesystem
+// ---------------------------------------------------------------------------
+
+@Test func isUsableWhenNoExpiry() {
+    let creds = OAuthCredentials(accessToken: "tok", expiresAt: nil)
+    #expect(CredentialsParser.isUsable(creds, now: Date()) == true)
+}
+
+@Test func isUsableWhenExpiryIsFuture() {
+    let future = Date(timeIntervalSinceNow: 3600)
+    let creds = OAuthCredentials(accessToken: "tok", expiresAt: future)
+    #expect(CredentialsParser.isUsable(creds, now: Date()) == true)
+}
+
+@Test func isUsableWhenExpiryIsPast() {
+    let past = Date(timeIntervalSinceNow: -1)
+    let creds = OAuthCredentials(accessToken: "tok", expiresAt: past)
+    #expect(CredentialsParser.isUsable(creds, now: Date()) == false)
+}
+
+// ---------------------------------------------------------------------------
+// Existing parser tests
+// ---------------------------------------------------------------------------
+
 @Test func parsesClaudeCodeCredentialJSON() throws {
     let json = #"{"claudeAiOauth":{"accessToken":"sk-ant-oat01-abc","refreshToken":"sk-ant-ort01-x","expiresAt":1781200000000,"scopes":["user:inference"],"subscriptionType":"max"}}"#
     let creds = try CredentialsParser.parse(Data(json.utf8))
