@@ -5,6 +5,20 @@ import Security
 public struct OAuthCredentials: Equatable, Sendable {
     public let accessToken: String
     public let expiresAt: Date?
+    public let subscriptionType: String?
+    public let rateLimitTier: String?
+
+    public init(
+        accessToken: String,
+        expiresAt: Date?,
+        subscriptionType: String? = nil,
+        rateLimitTier: String? = nil
+    ) {
+        self.accessToken = accessToken
+        self.expiresAt = expiresAt
+        self.subscriptionType = subscriptionType
+        self.rateLimitTier = rateLimitTier
+    }
 }
 
 public enum CredentialsError: Error, Equatable {
@@ -33,7 +47,12 @@ public enum CredentialsParser {
         } else {
             expiresAt = nil
         }
-        return OAuthCredentials(accessToken: token, expiresAt: expiresAt)
+        return OAuthCredentials(
+            accessToken: token,
+            expiresAt: expiresAt,
+            subscriptionType: oauth["subscriptionType"] as? String,
+            rateLimitTier: oauth["rateLimitTier"] as? String
+        )
     }
 
     /// Returns false iff `expiresAt` is set AND is in the past. Used to skip
