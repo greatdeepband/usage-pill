@@ -40,17 +40,21 @@ private func makeResponse(statusCode: Int, url: URL = URL(string: "https://api.a
     HTTPURLResponse(url: url, statusCode: statusCode, httpVersion: nil, headerFields: nil)!
 }
 
+private func makeCache(token: String = "tok") -> CredentialsCache {
+    CredentialsCache(load: { OAuthCredentials(accessToken: token, expiresAt: nil) })
+}
+
 // ---------------------------------------------------------------------------
 // Tests — serialized so the shared nonisolated(unsafe) handler cannot race.
 // ---------------------------------------------------------------------------
 @Suite(.serialized)
 struct UsageFetcherLiveTests {
 
-    // (a) 401 → throws FetchError.unauthorized
+    // (a) 401 → throws FetchError.unauthorized (token unchanged → no retry succeeds)
     @Test func returns401AsUnauthorized() async throws {
         StubProtocol.handler = { _ in (Data(), makeResponse(statusCode: 401)) }
         let fetcher = UsageFetcher(
-            loadCredentials: { OAuthCredentials(accessToken: "tok", expiresAt: nil) },
+            cache: makeCache(token: "tok"),
             session: makeSession()
         )
         await #expect(throws: FetchError.unauthorized) {
@@ -62,7 +66,7 @@ struct UsageFetcherLiveTests {
     @Test func returns200WithGarbodyAsUndecodable() async throws {
         StubProtocol.handler = { _ in (Data("not-json".utf8), makeResponse(statusCode: 200)) }
         let fetcher = UsageFetcher(
-            loadCredentials: { OAuthCredentials(accessToken: "tok", expiresAt: nil) },
+            cache: makeCache(),
             session: makeSession()
         )
         await #expect(throws: FetchError.undecodable) {
@@ -74,10 +78,8 @@ struct UsageFetcherLiveTests {
     @Test func propagatesCredentialsError() async throws {
         var networkHit = false
         StubProtocol.handler = { _ in networkHit = true; return (Data(), makeResponse(statusCode: 200)) }
-        let fetcher = UsageFetcher(
-            loadCredentials: { throw CredentialsError.notFound },
-            session: makeSession()
-        )
+        let cache = CredentialsCache(load: { throw CredentialsError.notFound })
+        let fetcher = UsageFetcher(cache: cache, session: makeSession())
         await #expect(throws: CredentialsError.notFound) {
             _ = try await fetcher.fetch()
         }
@@ -87,10 +89,7 @@ struct UsageFetcherLiveTests {
     // (e) URLError(.cancelled) from stub → normalized to CancellationError
     @Test func urlCancelledNormalizesToCancellationError() async throws {
         StubProtocol.handler = { _ in throw URLError(.cancelled) }
-        let fetcher = UsageFetcher(
-            loadCredentials: { OAuthCredentials(accessToken: "tok", expiresAt: nil) },
-            session: makeSession()
-        )
+        let fetcher = UsageFetcher(cache: makeCache(), session: makeSession())
         await #expect(throws: CancellationError.self) {
             _ = try await fetcher.fetch()
         }
@@ -100,12 +99,87 @@ struct UsageFetcherLiveTests {
     @Test func decodesValidResponse() async throws {
         let json = #"{"five_hour":{"utilization":50.0,"resets_at":"2026-06-11T00:49:59Z"}}"#
         StubProtocol.handler = { _ in (Data(json.utf8), makeResponse(statusCode: 200)) }
-        let fetcher = UsageFetcher(
-            loadCredentials: { OAuthCredentials(accessToken: "tok", expiresAt: nil) },
-            session: makeSession()
-        )
+        let fetcher = UsageFetcher(cache: makeCache(), session: makeSession())
         let snap = try await fetcher.fetch()
         #expect(snap.session?.utilization == 50.0)
         #expect(snap.session?.resetsAt != nil)
+    }
+
+    // (f) 401 then 200 with rotated token → fetch succeeds and SECOND request carries new token
+    @Test func retryWith401ThenRotatedToken() async throws {
+        let json = #"{"five_hour":{"utilization":42.0,"resets_at":"2026-06-11T00:49:59Z"}}"#
+        var requestCount = 0
+        var observedAuthHeaders: [String] = []
+
+        StubProtocol.handler = { req in
+            requestCount += 1
+            if let auth = req.value(forHTTPHeaderField: "Authorization") {
+                observedAuthHeaders.append(auth)
+            }
+            if requestCount == 1 {
+                return (Data(), makeResponse(statusCode: 401))
+            } else {
+                return (Data(json.utf8), makeResponse(statusCode: 200))
+            }
+        }
+
+        // Cache that returns tokenA first, tokenB on reload
+        nonisolated(unsafe) var loadCount = 0
+        let tokens = ["tokenA", "tokenB"]
+        let cache = CredentialsCache(load: {
+            let t = tokens[min(loadCount, tokens.count - 1)]
+            loadCount += 1
+            return OAuthCredentials(accessToken: t, expiresAt: nil)
+        })
+
+        let fetcher = UsageFetcher(cache: cache, session: makeSession())
+        let snap = try await fetcher.fetch()
+        #expect(snap.session?.utilization == 42.0)
+        #expect(requestCount == 2)
+        #expect(observedAuthHeaders == ["Bearer tokenA", "Bearer tokenB"])
+    }
+
+    // (h) Every response is 401, but the loader rotates tokens each call →
+    //     exactly 2 network requests (initial + one retry) then throws .unauthorized.
+    //     Pins one-retry-max behavior so a future refactor can't silently loop.
+    @Test func oneRetryMaxOnPersistent401() async throws {
+        nonisolated(unsafe) var requestCount = 0
+        StubProtocol.handler = { _ in
+            requestCount += 1
+            return (Data(), makeResponse(statusCode: 401))
+        }
+
+        // Loader always rotates: token0, token1, token2, … — ensures reloadAfterUnauthorized
+        // returns non-nil (a changed token) so the retry path is exercised.
+        nonisolated(unsafe) var loadCount = 0
+        let cache = CredentialsCache(load: {
+            let t = "token\(loadCount)"
+            loadCount += 1
+            return OAuthCredentials(accessToken: t, expiresAt: nil)
+        })
+
+        let fetcher = UsageFetcher(cache: cache, session: makeSession())
+        await #expect(throws: FetchError.unauthorized) {
+            _ = try await fetcher.fetch()
+        }
+        #expect(requestCount == 2)
+    }
+
+    // (g) 401 with unchanged token → throws FetchError.unauthorized after exactly ONE network request
+    @Test func noRetryWhenTokenUnchanged() async throws {
+        var requestCount = 0
+        StubProtocol.handler = { _ in
+            requestCount += 1
+            return (Data(), makeResponse(statusCode: 401))
+        }
+
+        // Cache always returns the same token → reloadAfterUnauthorized returns nil
+        let cache = CredentialsCache(load: { OAuthCredentials(accessToken: "sameToken", expiresAt: nil) })
+        let fetcher = UsageFetcher(cache: cache, session: makeSession())
+
+        await #expect(throws: FetchError.unauthorized) {
+            _ = try await fetcher.fetch()
+        }
+        #expect(requestCount == 1)
     }
 }

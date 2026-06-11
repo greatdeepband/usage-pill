@@ -16,7 +16,7 @@ import Testing
     #expect(UsageRequestBuilder.mapStatus(200) == nil)
     #expect(UsageRequestBuilder.mapStatus(204) == nil)
     #expect(UsageRequestBuilder.mapStatus(401) == .unauthorized)
-    #expect(UsageRequestBuilder.mapStatus(403) == .unauthorized)
+    #expect(UsageRequestBuilder.mapStatus(403) == .badResponse(403))
     #expect(UsageRequestBuilder.mapStatus(429) == .badResponse(429))
     #expect(UsageRequestBuilder.mapStatus(500) == .badResponse(500))
 }

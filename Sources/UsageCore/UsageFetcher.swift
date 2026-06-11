@@ -22,7 +22,10 @@ public enum UsageRequestBuilder {
     public static func mapStatus(_ code: Int) -> FetchError? {
         switch code {
         case 200..<300: return nil
-        case 401, 403: return .unauthorized
+        // 401 = expired/rotated token → reload keychain and retry once.
+        // 403 = scope/policy refusal — reloading the keychain cannot fix it;
+        //       treating it as unauthorized would re-prompt every 10 min forever.
+        case 401: return .unauthorized
         default: return .badResponse(code)
         }
     }
@@ -30,20 +33,31 @@ public enum UsageRequestBuilder {
 
 public struct UsageFetcher: Sendable {
     private static let log = Logger(subsystem: "pl.bbi.claude-usage-pill", category: "fetch")
-    private let loadCredentials: @Sendable () throws -> OAuthCredentials
+    private let cache: CredentialsCache
     private let session: URLSession
 
-    public init(
-        loadCredentials: @escaping @Sendable () throws -> OAuthCredentials,
-        session: URLSession = .shared
-    ) {
-        self.loadCredentials = loadCredentials
+    public init(cache: CredentialsCache, session: URLSession = .shared) {
+        self.cache = cache
         self.session = session
     }
 
     public func fetch() async throws -> UsageSnapshot {
-        let creds = try loadCredentials()
-        let req = UsageRequestBuilder.request(token: creds.accessToken)
+        let creds = try await cache.credentials()
+        do {
+            return try await fetchOnce(token: creds.accessToken)
+        } catch FetchError.unauthorized {
+            // Token may have rotated; ask the cache to reload (throttled).
+            if let fresh = try await cache.reloadAfterUnauthorized() {
+                return try await fetchOnce(token: fresh.accessToken)
+            }
+            throw FetchError.unauthorized
+        }
+    }
+
+    // MARK: - Private
+
+    private func fetchOnce(token: String) async throws -> UsageSnapshot {
+        let req = UsageRequestBuilder.request(token: token)
         let (data, response): (Data, URLResponse)
         do {
             (data, response) = try await session.data(for: req)

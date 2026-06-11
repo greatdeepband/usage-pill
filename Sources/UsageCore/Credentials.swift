@@ -21,8 +21,11 @@ public enum CredentialsParser {
               !token.isEmpty else {
             throw CredentialsError.unreadable
         }
-        // expiresAt is kept for diagnostics only; expiry is enforced by the
-        // server (401 → stale state), never checked locally.
+        // expiresAt is kept for diagnostics and the file-store expiry check
+        // (isUsable). Keychain tokens are passed through without expiry checking —
+        // Claude Code keeps them fresh; local metadata may be stale. Only file-store
+        // tokens have their expiry checked (expired file token → .notFound so the UI
+        // shows the sign-in hint rather than spinning on guaranteed-401 requests).
         let expiresAt: Date?
         if let number = oauth["expiresAt"] as? NSNumber,
            CFGetTypeID(number) != CFBooleanGetTypeID() {
@@ -31,6 +34,13 @@ public enum CredentialsParser {
             expiresAt = nil
         }
         return OAuthCredentials(accessToken: token, expiresAt: expiresAt)
+    }
+
+    /// Returns false iff `expiresAt` is set AND is in the past. Used to skip
+    /// stale file-store tokens that can only produce 401 loops.
+    public static func isUsable(_ creds: OAuthCredentials, now: Date) -> Bool {
+        guard let exp = creds.expiresAt else { return true }
+        return exp > now
     }
 }
 
@@ -50,14 +60,16 @@ public struct KeychainCredentialsProvider: Sendable {
         let status = SecItemCopyMatching(query as CFDictionary, &item)
         if status == errSecSuccess, let data = item as? Data {
             do {
+                // Keychain-sourced tokens are returned without expiry checking —
+                // Claude Code keeps them fresh; local metadata may be stale.
                 return try CredentialsParser.parse(data)
             } catch {
                 // Keychain item is present but unreadable (corrupt or wrong shape).
                 // Fall through to the file store; if that is also absent, rethrow
                 // the original .unreadable error — not .notFound — so the caller
                 // knows something was found but could not be parsed.
-                if let fileData = fileCredentialsData() {
-                    return try CredentialsParser.parse(fileData)
+                if let creds = try fileCredentials() {
+                    return creds
                 }
                 throw error
             }
@@ -65,10 +77,23 @@ public struct KeychainCredentialsProvider: Sendable {
         // Any non-success status (not-found, but also user-canceled or ACL-denied)
         // falls through to the file store; if that is absent too, the caller sees
         // .notFound and the UI shows the sign-in hint.
-        guard let data = fileCredentialsData() else {
+        guard let creds = try fileCredentials() else {
             throw CredentialsError.notFound
         }
-        return try CredentialsParser.parse(data)
+        return creds
+    }
+
+    /// Parses the file-based credential store and checks that the token has not
+    /// expired. Returns nil when the file is absent; throws when present but
+    /// unreadable or expired (expired → .notFound so the UI shows the sign-in
+    /// hint rather than spinning on guaranteed-401 requests).
+    private func fileCredentials() throws -> OAuthCredentials? {
+        guard let data = fileCredentialsData() else { return nil }
+        let creds = try CredentialsParser.parse(data)
+        guard CredentialsParser.isUsable(creds, now: Date()) else {
+            throw CredentialsError.notFound
+        }
+        return creds
     }
 
     /// Contents of the file-based credential store used on some setups, if present.

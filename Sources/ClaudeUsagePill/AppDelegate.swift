@@ -11,7 +11,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let provider = KeychainCredentialsProvider()
-        let fetcher = UsageFetcher(loadCredentials: { try provider.load() })
+        let cache = CredentialsCache(load: { try provider.load() })
+        let fetcher = UsageFetcher(cache: cache)
         model = UsageModel(fetch: { try await fetcher.fetch() })
 
         panel = PillPanel()
