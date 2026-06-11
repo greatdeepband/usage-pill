@@ -62,7 +62,6 @@ swift build && .build/debug/ClaudeUsagePill
 
 `scripts/probe-usage-api.sh` prints the live usage-endpoint response and the
 credential key structure (no secret values) — useful if the API shape changes.
-Design docs and the implementation plan live in `docs/superpowers/`.
 
 ## Uninstall
 
