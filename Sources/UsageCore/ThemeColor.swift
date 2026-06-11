@@ -25,9 +25,13 @@ public enum ThemeColor {
         )
     }
 
-    /// Always "#RRGGBBAA" uppercase.
+    /// Always "#RRGGBBAA" uppercase. Non-finite components map to 0 — RGBA's
+    /// init is public, so format must not trap on caller-supplied NaN/inf.
     public static func format(_ c: RGBA) -> String {
-        func b(_ x: Double) -> Int { Int((min(max(x, 0), 1) * 255).rounded()) }
+        func b(_ x: Double) -> Int {
+            guard x.isFinite else { return 0 }
+            return Int((min(max(x, 0), 1) * 255).rounded())
+        }
         return String(format: "#%02X%02X%02X%02X", b(c.r), b(c.g), b(c.b), b(c.a))
     }
 }

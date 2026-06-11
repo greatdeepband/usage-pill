@@ -50,3 +50,12 @@ private func freshDefaults() -> UserDefaults {
     d.set("neon", forKey: "theme.palette")
     #expect(ThemeSettings(defaults: d).load().palette == .dusk)
 }
+
+@Test func fallbackPreservesIdentityToggle() {
+    let d = freshDefaults()
+    d.set("not-a-color", forKey: "theme.session")
+    d.set(true, forKey: "identity.show")
+    let loaded = ThemeSettings(defaults: d).load()
+    #expect(loaded.theme == Palette.dusk.preset!)
+    #expect(loaded.showIdentity == true) // fallback must not reset the toggle
+}

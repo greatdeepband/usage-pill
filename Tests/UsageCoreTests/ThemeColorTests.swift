@@ -24,3 +24,7 @@ import Testing
     }
     #expect(ThemeColor.format(ThemeColor.parse("#C9A283")!) == "#C9A283FF")
 }
+
+@Test func formatToleratesNonFiniteComponents() {
+    #expect(ThemeColor.format(RGBA(r: .nan, g: .infinity, b: -.infinity, a: 1)) == "#000000FF")
+}
