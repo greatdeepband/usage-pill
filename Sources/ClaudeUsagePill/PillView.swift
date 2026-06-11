@@ -50,9 +50,14 @@ struct PillView: View {
             if expanded { footer }
         }
         .padding(.horizontal, 16)
-        .padding(.vertical, expanded ? 13 : 9)
-        .background(VisualEffectBlur())
-        .background(Color(red: 28 / 255, green: 30 / 255, blue: 38 / 255).opacity(0.55))
+        .padding(.vertical, expanded ? 13 : 8)
+        .background {
+            ZStack {
+                VisualEffectBlur() // glass: blurs what's behind the window
+                Color(red: 28 / 255, green: 30 / 255, blue: 38 / 255)
+                    .opacity(0.55) // dark tint over the glass, under the content
+            }
+        }
         .clipShape(shape)
         .overlay(shape.stroke(.white.opacity(0.12), lineWidth: 1))
         .opacity(model.status == .stale(reason: .unauthorized) ? 0.75 : 1)
@@ -76,10 +81,10 @@ struct PillView: View {
                         .foregroundStyle(.white.opacity(0.5))
                 } else {
                     bar(window: window, base: base)
-                    Text(window.map { "\(Int($0.utilization.rounded()))" } ?? "—")
+                    Text(window.map { "\(Int($0.utilization.rounded()))%" } ?? "—")
                         .font(.system(size: 10.5, weight: .regular).monospacedDigit())
                         .foregroundStyle(.white.opacity(0.75))
-                        .frame(width: 24, alignment: .trailing)
+                        .frame(width: 30, alignment: .trailing)
                 }
             }
             if expanded { bar(window: window, base: base) }

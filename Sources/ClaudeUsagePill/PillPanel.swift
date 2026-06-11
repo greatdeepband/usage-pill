@@ -2,8 +2,8 @@ import AppKit
 import UsageCore
 
 final class PillPanel: NSPanel {
-    static let compactSize = NSSize(width: 250, height: 44)
-    static let expandedSize = NSSize(width: 250, height: 128)
+    static let compactSize = NSSize(width: 250, height: 50)
+    static let expandedSize = NSSize(width: 250, height: 132)
     private static let originKey = "pillTopLeft"
 
     init() {

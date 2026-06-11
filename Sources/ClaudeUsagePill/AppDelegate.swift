@@ -25,6 +25,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         timer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
             Task { @MainActor in await self?.model.refresh() }
         }
+        timer?.tolerance = 10 // let the OS coalesce wake-ups
         NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.didWakeNotification, object: nil, queue: .main
         ) { [weak self] _ in
