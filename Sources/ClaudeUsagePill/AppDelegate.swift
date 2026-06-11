@@ -7,6 +7,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var panel: PillPanel!
     private var model: UsageModel!
     private var timer: Timer?
+    private var menuBar: MenuBarController!
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let provider = KeychainCredentialsProvider()
@@ -31,5 +32,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         ) { [weak self] _ in
             Task { @MainActor in await self?.model.refresh() }
         }
+        menuBar = MenuBarController(model: model)
     }
 }
