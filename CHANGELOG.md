@@ -1,5 +1,13 @@
 # Changelog
 
+## v1.2.1 — 2026-06-11
+
+- **Plan badge now shows server truth.** The badge previously derived its
+  multiplier from the locally stored credential metadata, which can lag a
+  plan change (observed: "MAX 5×" shown for a Max 20× account). It now
+  prefers `organization.rate_limit_tier` from the profile response and only
+  falls back to the local copy when offline.
+
 ## v1.2 — 2026-06-11
 
 Themes, identity display, and rate-limit resilience.

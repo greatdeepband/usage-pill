@@ -2,7 +2,14 @@ import Foundation
 
 public struct Profile: Equatable, Sendable {
     public let email: String?
-    public init(email: String?) { self.email = email }
+    /// Server-truth tier (organization.rate_limit_tier). The credential file's
+    /// copy can be stale after a plan change — prefer this when present.
+    public let rateLimitTier: String?
+
+    public init(email: String?, rateLimitTier: String? = nil) {
+        self.email = email
+        self.rateLimitTier = rateLimitTier
+    }
 }
 
 public extension Profile {
@@ -15,7 +22,10 @@ public extension Profile {
         let raw = (account?["email"] ?? account?["email_address"]
                    ?? root["email_address"] ?? root["email"]) as? String
         let email = raw.flatMap { $0.isEmpty ? nil : $0 }
-        return Profile(email: email)
+        let organization = root["organization"] as? [String: Any]
+        let tier = (organization?["rate_limit_tier"] as? String)
+            .flatMap { $0.isEmpty ? nil : $0 }
+        return Profile(email: email, rateLimitTier: tier)
     }
 }
 

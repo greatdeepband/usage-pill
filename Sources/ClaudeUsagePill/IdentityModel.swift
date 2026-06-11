@@ -31,14 +31,19 @@ final class IdentityModel: ObservableObject {
         lastAttempt = Date()
         Task { @MainActor in
             defer { inFlight = false }
+            // Profile first: its organization.rate_limit_tier is server truth.
+            // The credential file's tier can be stale after a plan change
+            // (observed in the field: credential said 5x, server said 20x),
+            // so it is only the offline fallback.
+            let profile = try? await fetchProfile()
+            if email == nil {
+                email = profile?.email
+            }
             if planBadge == nil, let creds = try? await cache.credentials() {
                 planBadge = PlanBadge.text(
                     subscriptionType: creds.subscriptionType,
-                    rateLimitTier: creds.rateLimitTier
+                    rateLimitTier: profile?.rateLimitTier ?? creds.rateLimitTier
                 )
-            }
-            if email == nil {
-                email = (try? await fetchProfile())?.email
             }
         }
     }

@@ -28,3 +28,16 @@ import Testing
     #expect(req.value(forHTTPHeaderField: "anthropic-beta") == "oauth-2025-04-20")
     #expect(req.timeoutInterval == 10)
 }
+
+@Test func decodesServerRateLimitTier() throws {
+    let json = #"{"account":{"email":"a@b.c"},"organization":{"rate_limit_tier":"default_claude_max_20x"}}"#
+    let p = try Profile.decode(from: Data(json.utf8))
+    #expect(p.rateLimitTier == "default_claude_max_20x")
+    // PlanBadge derives 20× from the server tier shape
+    #expect(PlanBadge.text(subscriptionType: "max", rateLimitTier: p.rateLimitTier) == "MAX 20×")
+}
+
+@Test func missingOrEmptyOrganizationTierIsNil() throws {
+    #expect(try Profile.decode(from: Data(#"{"account":{"email":"a@b.c"}}"#.utf8)).rateLimitTier == nil)
+    #expect(try Profile.decode(from: Data(#"{"organization":{"rate_limit_tier":""}}"#.utf8)).rateLimitTier == nil)
+}
