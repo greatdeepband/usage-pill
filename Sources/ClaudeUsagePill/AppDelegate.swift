@@ -34,9 +34,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         panel.orderFrontRegardless()
 
         themeStore.$showIdentity
+            .combineLatest(identityModel.$email, identityModel.$planBadge)
             .receive(on: RunLoop.main)
-            .sink { [weak self] on in
-                self?.panel.identityEnabled = on
+            .sink { [weak self] on, email, badge in
+                self?.panel.identityEnabled = on && (email != nil || badge != nil)
                 if on { self?.identityModel.loadIfNeeded() }
             }
             .store(in: &cancellables)

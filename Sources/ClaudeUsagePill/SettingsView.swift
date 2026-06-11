@@ -94,8 +94,8 @@ struct SettingsView: View {
     }
 
     private func swatch(for p: Palette) -> some View {
-        // The ForEach filters out .custom, so preset is always present; fall
-        // back to Dusk rather than trapping if a preset-less case ever joins.
+        // Callers pass only preset palettes; fall back to Dusk rather than
+        // trapping if a preset-less case ever arrives.
         let t = p.preset ?? Palette.dusk.preset!
         return VStack(spacing: 3) {
             ZStack {

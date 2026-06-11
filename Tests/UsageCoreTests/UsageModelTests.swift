@@ -323,3 +323,22 @@ private final class CallCounter: @unchecked Sendable {
     await model.refresh(force: true)
     #expect(model.status == .ok) // user intent wins
 }
+
+@Test @MainActor func forcedRefreshThat429sReArmsBackoff() async {
+    let clock = ClockBox(Date(timeIntervalSince1970: 0))
+    let model = makeModel(
+        results: [.failure(FetchError.rateLimited(retryAfter: 300)),
+                  .failure(FetchError.rateLimited(retryAfter: 300)),
+                  .success(snapA)],
+        now: { clock.now }
+    )
+    await model.refresh()                       // arms backoff (t=0..300)
+    clock.now = Date(timeIntervalSince1970: 60)
+    await model.refresh(force: true)            // hits network, 429s again → re-arms (t=60..360)
+    clock.now = Date(timeIntervalSince1970: 320) // inside the RE-ARMED window
+    await model.refresh()
+    #expect(model.status == .stale(reason: .rateLimited)) // auto poll still skipped
+    clock.now = Date(timeIntervalSince1970: 361)
+    await model.refresh()
+    #expect(model.status == .ok)
+}

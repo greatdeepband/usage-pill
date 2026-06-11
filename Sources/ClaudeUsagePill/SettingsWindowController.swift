@@ -1,6 +1,5 @@
 import AppKit
 import SwiftUI
-import UsageCore
 
 @MainActor
 final class SettingsWindowController {

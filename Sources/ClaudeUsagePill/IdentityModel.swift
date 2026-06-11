@@ -11,25 +11,35 @@ final class IdentityModel: ObservableObject {
 
     private let cache: CredentialsCache
     private let fetchProfile: () async throws -> Profile
-    private var loaded = false
+    private var inFlight = false
+    private var lastAttempt: Date?
 
     init(cache: CredentialsCache, fetchProfile: @escaping () async throws -> Profile) {
         self.cache = cache
         self.fetchProfile = fetchProfile
     }
 
-    /// Idempotent per launch; call when the toggle is (or becomes) on.
+    /// Retries on later calls (hover / toggle-on) until both fields resolve,
+    /// throttled to one attempt per 5 minutes so a hover can't spam the
+    /// network. CredentialsCache's own negative caching keeps the keychain
+    /// quiet regardless.
     func loadIfNeeded() {
-        guard !loaded else { return }
-        loaded = true
+        guard planBadge == nil || email == nil else { return } // fully resolved
+        guard !inFlight else { return }
+        if let last = lastAttempt, Date().timeIntervalSince(last) < 300 { return }
+        inFlight = true
+        lastAttempt = Date()
         Task { @MainActor in
-            if let creds = try? await cache.credentials() {
+            defer { inFlight = false }
+            if planBadge == nil, let creds = try? await cache.credentials() {
                 planBadge = PlanBadge.text(
                     subscriptionType: creds.subscriptionType,
                     rateLimitTier: creds.rateLimitTier
                 )
             }
-            email = (try? await fetchProfile())?.email
+            if email == nil {
+                email = (try? await fetchProfile())?.email
+            }
         }
     }
 }

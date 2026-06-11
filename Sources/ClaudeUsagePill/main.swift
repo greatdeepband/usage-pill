@@ -1,14 +1,22 @@
 import AppKit
 
-// Single-instance guard: if another copy of the installed .app is already
-// running, defer to it and exit immediately.  Debug binaries have no bundle id
-// so Bundle.main.bundleIdentifier is nil; the fallback literal won't match a
-// bare debug binary, so this guard is a no-op in development.
-let runningCopies = NSRunningApplication.runningApplications(
+// Single-instance guard: defer to an OLDER running copy (deterministic
+// tiebreak by launch date, then PID, so two simultaneous launches can't
+// both exit). Note: a debug binary has no bundle id and uses the fallback
+// string — if the installed .app is running, the debug binary defers to it;
+// kill the installed copy first when developing.
+let current = NSRunningApplication.current
+let copies = NSRunningApplication.runningApplications(
     withBundleIdentifier: Bundle.main.bundleIdentifier ?? "pl.bbi.claude-usage-pill"
 )
-if runningCopies.contains(where: { $0.processIdentifier != ProcessInfo.processInfo.processIdentifier }) {
-    exit(0) // another pill is already on screen; this launch defers to it
+let myLaunch = current.launchDate ?? .distantPast
+if copies.contains(where: { other in
+    guard other.processIdentifier != current.processIdentifier else { return false }
+    let otherLaunch = other.launchDate ?? .distantPast
+    return otherLaunch < myLaunch
+        || (otherLaunch == myLaunch && other.processIdentifier < current.processIdentifier)
+}) {
+    exit(0)
 }
 
 let app = NSApplication.shared
