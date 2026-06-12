@@ -1,21 +1,21 @@
 import SwiftUI
 import UsageCore
 
-/// Add-provider flow (plan Task 16): preset picker + dead-simple custom
-/// discovery. One enum-driven state machine; ALL field state lives on the
-/// sheet itself so Back always preserves entries. Nothing persists until the
-/// final "Add to Pill" — Cancel anywhere just dismisses (no keychain writes,
-/// no spec writes).
+/// Add-provider flow (plan Task 16, now a PUSHED page per Task 18c): preset
+/// picker + dead-simple custom discovery. One enum-driven state machine; ALL
+/// field state lives on the flow itself so its internal Back always preserves
+/// entries. Nothing persists until the final "Add to Pill" — Cancel anywhere
+/// returns to the list (no keychain writes, no spec writes).
 ///
 /// PRIVACY: the pasted key lives only in @State and flows only to
 /// ProviderProbe.discover and ProviderKeyStore.save. Never logged, never in
 /// error text, never in the spec.
-struct AddProviderSheet: View {
+struct AddProviderFlow: View {
     let specStore: ProviderSpecStore
     let keyStore: ProviderKeyStore
     @ObservedObject var providersModel: ProvidersModel
-
-    @Environment(\.dismiss) private var dismiss
+    /// Navigates back to the settings list (replaces the sheet's dismiss).
+    let onClose: () -> Void
 
     /// ④ pickSource → ④b presetForm | ⑤ customForm → ⑤b probing →
     /// ⑥ pickField → ⑦ finish.
@@ -55,7 +55,7 @@ struct AddProviderSheet: View {
     @State private var color: Color
     /// Round-tripped initial color; if Add lands on .custom with this same
     /// hex the user never actually moved the picker and accentHex stays nil
-    /// (row follows the default sage) — same pattern as ProviderDetailSheet.
+    /// (row follows the default sage) — same pattern as ProviderSettingsPage.
     private let initialHex: String?
 
     /// nil accentHex renders as the default sage (#9DB39A) in the pill.
@@ -63,31 +63,36 @@ struct AddProviderSheet: View {
 
     init(specStore: ProviderSpecStore,
          keyStore: ProviderKeyStore,
-         providersModel: ProvidersModel) {
+         providersModel: ProvidersModel,
+         onClose: @escaping () -> Void) {
         self.specStore = specStore
         self.keyStore = keyStore
         self.providersModel = providersModel
+        self.onClose = onClose
         let c = Color(themeHex: Self.defaultAccent)
         _color = State(initialValue: c)
         initialHex = c.themeHex
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            Group {
-                switch step {
-                case .pickSource: sourcePicker
-                case .presetForm(let preset): presetForm(preset)
-                case .customForm: customForm
-                case .probing: probingView
-                case .pickField(let fields): fieldPicker(fields)
-                case .finish: finishForm
-                }
+        Group {
+            switch step {
+            case .pickSource:
+                SettingsPage { sourcePicker } buttons: { buttons }
+            case .presetForm(let preset):
+                SettingsPage { presetForm(preset) } buttons: { buttons }
+            case .customForm:
+                SettingsPage { customForm } buttons: { buttons }
+            case .probing:
+                SettingsPage { probingView } buttons: { buttons }
+            case .pickField(let fields):
+                SettingsPage(scrolls: fields.count > 8, scrollHeight: 380) {
+                    fieldPicker(fields)
+                } buttons: { buttons }
+            case .finish:
+                SettingsPage { finishForm } buttons: { buttons }
             }
-            buttons
         }
-        .frame(width: 360)
-        .fixedSize(horizontal: false, vertical: true)
         .onDisappear { probeTask?.cancel() }
     }
 
@@ -95,76 +100,79 @@ struct AddProviderSheet: View {
 
     @ViewBuilder
     private var buttons: some View {
-        HStack {
-            Spacer()
-            switch step {
-            case .pickSource:
-                Button("Cancel") { dismiss() }
-            case .presetForm(let preset):
-                Button("Back") { step = .pickSource }
-                Button("Add to Pill") { addPreset(preset) }
-                    .keyboardShortcut(.defaultAction)
-                    .disabled(trimmed(presetKey).isEmpty)
-            case .customForm:
-                Button("Cancel") { dismiss() }
-                Button("Continue") { startProbe() }
-                    .keyboardShortcut(.defaultAction)
-                    .disabled(trimmed(urlText).isEmpty || trimmed(keyText).isEmpty)
-            case .probing:
-                Button("Cancel") {
-                    probeTask?.cancel()
-                    dismiss()
-                }
-            case .pickField:
-                Button("Back") { step = .customForm }
-                Button("Continue") {
-                    guard let selected else { return }
-                    if trimmed(customName).isEmpty {
-                        customName = Self.defaultName(from: urlText)
-                    }
-                    step = .finish(selected)
-                }
+        switch step {
+        case .pickSource:
+            Button("Cancel") { onClose() }
+                .buttonStyle(CapsuleButtonStyle())
+        case .presetForm(let preset):
+            Button("Back") { step = .pickSource }
+                .buttonStyle(CapsuleButtonStyle())
+            Button("Add to Pill") { addPreset(preset) }
+                .buttonStyle(AccentCapsuleButtonStyle())
                 .keyboardShortcut(.defaultAction)
-                .disabled(selected == nil)
-            case .finish(let field):
-                Button("Back") { step = .pickField(discovered) }
-                Button("Add to Pill") { addCustom(field) }
-                    .keyboardShortcut(.defaultAction)
+                .disabled(trimmed(presetKey).isEmpty)
+        case .customForm:
+            Button("Cancel") { onClose() }
+                .buttonStyle(CapsuleButtonStyle())
+            Button("Continue") { startProbe() }
+                .buttonStyle(AccentCapsuleButtonStyle())
+                .keyboardShortcut(.defaultAction)
+                .disabled(trimmed(urlText).isEmpty || trimmed(keyText).isEmpty)
+        case .probing:
+            Button("Cancel") {
+                probeTask?.cancel()
+                onClose()
             }
+            .buttonStyle(CapsuleButtonStyle())
+        case .pickField:
+            Button("Back") { step = .customForm }
+                .buttonStyle(CapsuleButtonStyle())
+            Button("Continue") {
+                guard let selected else { return }
+                if trimmed(customName).isEmpty {
+                    customName = Self.defaultName(from: urlText)
+                }
+                step = .finish(selected)
+            }
+            .buttonStyle(AccentCapsuleButtonStyle())
+            .keyboardShortcut(.defaultAction)
+            .disabled(selected == nil)
+        case .finish(let field):
+            Button("Back") { step = .pickField(discovered) }
+                .buttonStyle(CapsuleButtonStyle())
+            Button("Add to Pill") { addCustom(field) }
+                .buttonStyle(AccentCapsuleButtonStyle())
+                .keyboardShortcut(.defaultAction)
         }
-        .padding(.horizontal, 20)
-        .padding(.bottom, 16)
     }
 
     // MARK: ④ source picker
 
+    @ViewBuilder
     private var sourcePicker: some View {
-        Form {
-            Section {
-                ForEach(ProviderPresets.all, id: \.name) { preset in
-                    sourceRow(
-                        title: preset.name,
-                        subtitle: "verified preset — just needs your key"
-                    ) {
-                        if pickedPresetName != preset.name {
-                            // Fresh preset: prefill from the template.
-                            pickedPresetName = preset.name
-                            presetName = preset.make().displayName
-                            presetKey = ""
-                        }
-                        step = .presetForm(preset)
-                    }
-                }
+        SettingsCard {
+            ForEach(ProviderPresets.all, id: \.name) { preset in
                 sourceRow(
-                    title: "Custom…",
-                    subtitle: "any provider with a JSON endpoint"
+                    title: preset.name,
+                    subtitle: "verified preset — just needs your key"
                 ) {
-                    step = .customForm
+                    if pickedPresetName != preset.name {
+                        // Fresh preset: prefill from the template.
+                        pickedPresetName = preset.name
+                        presetName = preset.make().displayName
+                        presetKey = ""
+                    }
+                    step = .presetForm(preset)
                 }
+                CardDivider()
+            }
+            sourceRow(
+                title: "Custom…",
+                subtitle: "any provider with a JSON endpoint"
+            ) {
+                step = .customForm
             }
         }
-        .formStyle(.grouped)
-        .scrollDisabled(true)
     }
 
     private func sourceRow(title: String, subtitle: String,
@@ -182,6 +190,7 @@ struct AddProviderSheet: View {
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.tertiary)
             }
+            .padding(.vertical, 9)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -189,17 +198,22 @@ struct AddProviderSheet: View {
 
     // MARK: ④b preset form
 
+    @ViewBuilder
     private func presetForm(_ preset: ProviderPresets.Preset) -> some View {
-        Form {
-            Section {
+        CardHeader(preset.name)
+        SettingsCard {
+            labeledRow("Name") {
                 TextField("Name", text: $presetName)
+                    .capsuleField()
+                    .frame(maxWidth: 200)
+            }
+            CardDivider()
+            labeledRow("API Key") {
                 SecureField("API Key", text: $presetKey, prompt: Text("paste key"))
-            } header: {
-                Text(preset.name)
+                    .capsuleField()
+                    .frame(maxWidth: 200)
             }
         }
-        .formStyle(.grouped)
-        .scrollDisabled(true)
     }
 
     private func addPreset(_ preset: ProviderPresets.Preset) {
@@ -211,28 +225,45 @@ struct AddProviderSheet: View {
 
     // MARK: ⑤ custom form
 
+    @ViewBuilder
     private var customForm: some View {
-        Form {
-            Section {
+        SettingsCard {
+            labeledRow("Endpoint URL") {
                 TextField("Endpoint URL", text: $urlText, prompt: Text("https://…"))
                     .autocorrectionDisabled()
+                    .capsuleField()
+                    .frame(maxWidth: 220)
+            }
+            CardDivider()
+            labeledRow("API Key") {
                 SecureField("API Key", text: $keyText, prompt: Text("paste key"))
-                DisclosureGroup("Advanced (auth header)") {
-                    TextField("Header Name", text: $headerName)
-                    TextField("Header Template", text: $headerTemplate)
+                    .capsuleField()
+                    .frame(maxWidth: 220)
+            }
+            CardDivider()
+            DisclosureGroup("Advanced (auth header)") {
+                VStack(alignment: .leading, spacing: 8) {
+                    labeledRow("Header Name") {
+                        TextField("Header Name", text: $headerName)
+                            .capsuleField()
+                            .frame(maxWidth: 180)
+                    }
+                    labeledRow("Header Template") {
+                        TextField("Header Template", text: $headerTemplate)
+                            .capsuleField()
+                            .frame(maxWidth: 180)
+                    }
                     Text("{key} is replaced with your key")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }
-            } footer: {
-                if let probeError {
-                    Text(probeError)
-                        .foregroundStyle(.red)
-                }
+                .padding(.top, 2)
             }
+            .padding(.vertical, 7)
         }
-        .formStyle(.grouped)
-        .scrollDisabled(true)
+        if let probeError {
+            CardFooter(text: probeError, color: .red)
+        }
     }
 
     // MARK: ⑤b probing
@@ -277,7 +308,7 @@ struct AddProviderSheet: View {
                     step = .pickField(fields)
                 }
             } catch is CancellationError {
-                // User cancelled; the sheet is already gone.
+                // User cancelled; the page is already gone.
             } catch let error as FetchError {
                 guard !Task.isCancelled else { return }
                 probeError = Self.message(for: error)
@@ -308,24 +339,20 @@ struct AddProviderSheet: View {
 
     // MARK: ⑥ field picker
 
+    @ViewBuilder
     private func fieldPicker(_ fields: [DiscoveredField]) -> some View {
-        // Content-hugging up to 8 rows; beyond that the sheet would outgrow
+        // Content-hugging up to 8 rows; beyond that the page would outgrow
         // the screen (probe cap is 50 fields), so the list scrolls instead.
-        let scrolls = fields.count > 8
-        return Form {
-            Section {
-                ForEach(fields, id: \.path) { field in
-                    fieldRow(field)
+        CardHeader("Numbers found at that endpoint")
+        SettingsCard {
+            ForEach(Array(fields.enumerated()), id: \.element.path) { i, field in
+                fieldRow(field)
+                if i < fields.count - 1 {
+                    CardDivider()
                 }
-            } header: {
-                Text("Numbers found at that endpoint")
-            } footer: {
-                Text("These are live values from that endpoint — pick the one that's your balance.")
             }
         }
-        .formStyle(.grouped)
-        .scrollDisabled(!scrolls)
-        .frame(height: scrolls ? 380 : nil)
+        CardFooter(text: "These are live values from that endpoint — pick the one that's your balance.")
     }
 
     private func fieldRow(_ field: DiscoveredField) -> some View {
@@ -347,52 +374,64 @@ struct AddProviderSheet: View {
                         .foregroundStyle(Color.accentColor)
                 }
             }
+            .padding(.vertical, 8)
+            .padding(.horizontal, 6)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .listRowBackground(
-            selected == field ? Color.accentColor.opacity(0.12) : Color.clear
+        .background(
+            RoundedRectangle(cornerRadius: 10)
+                .fill(selected == field ? Color.accentColor.opacity(0.12) : Color.clear)
         )
     }
 
     // MARK: ⑦ finish
 
+    @ViewBuilder
     private var finishForm: some View {
-        Form {
-            Section {
+        SettingsCard {
+            labeledRow("Name") {
                 TextField("Name", text: $customName)
-                Picker("Show As", selection: $showAs) {
-                    Text("Currency ($)").tag(ProviderSpec.ValueKind.currency)
-                    Text("Number").tag(ProviderSpec.ValueKind.number)
-                }
-                .pickerStyle(.menu)
-                LabeledContent("Warn Below") {
-                    HStack(spacing: 2) {
-                        if showAs == .currency {
-                            Text("$").foregroundStyle(.secondary)
-                        }
-                        TextField("none", text: $warnText)
-                            .multilineTextAlignment(.trailing)
-                            .frame(width: 70)
+                    .capsuleField()
+                    .frame(maxWidth: 200)
+            }
+            CardDivider()
+            labeledRow("Show As") {
+                CapsulePicker(options: [
+                    ("Currency ($)", ProviderSpec.ValueKind.currency),
+                    ("Number", ProviderSpec.ValueKind.number),
+                ], selection: $showAs)
+            }
+            CardDivider()
+            labeledRow("Warn Below") {
+                HStack(spacing: 4) {
+                    if showAs == .currency {
+                        Text("$").foregroundStyle(.secondary)
                     }
-                }
-                ProviderAccentSwatchRow(accent: $accent, color: $color)
-                ColorPicker("Custom", selection: customColorBinding, supportsOpacity: true) // alpha: Mist (#FFFFFFBF) must stay editable
-            } footer: {
-                if let saveErrorText {
-                    Text(saveErrorText)
-                        .foregroundStyle(.red)
-                } else {
-                    Text("Below the warning amount, this row turns amber regardless of its color.")
+                    TextField("none", text: $warnText)
+                        .multilineTextAlignment(.trailing)
+                        .capsuleField()
+                        .frame(width: 80)
                 }
             }
+            CardDivider()
+            ProviderAccentSwatchRow(accent: $accent, color: $color)
+            CardDivider()
+            labeledRow("Custom") {
+                // alpha: Mist (#FFFFFFBF) must stay editable
+                ColorPicker("", selection: customColorBinding, supportsOpacity: true)
+                    .labelsHidden()
+            }
         }
-        .formStyle(.grouped)
-        .scrollDisabled(true)
+        if let saveErrorText {
+            CardFooter(text: saveErrorText, color: .red)
+        } else {
+            CardFooter(text: "Below the warning amount, this row turns amber regardless of its color.")
+        }
     }
 
     /// Touching the custom well IS choosing Custom (mirrors the Claude
-    /// pane, where moving a color well switches the palette to .custom).
+    /// page, where moving a color well switches the palette to .custom).
     private var customColorBinding: Binding<Color> {
         Binding(
             get: { color },
@@ -456,7 +495,7 @@ struct AddProviderSheet: View {
         // Fetch the new row now rather than waiting for the 5-minute tick;
         // unchanged rows keep their backoff state.
         Task { await providersModel.refreshAll() }
-        dismiss()
+        onClose()
     }
 
     // MARK: helpers

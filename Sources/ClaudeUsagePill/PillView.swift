@@ -8,12 +8,16 @@ enum Dusk {
     static let softRed = Color(red: 0xC9 / 255, green: 0x83 / 255, blue: 0x83 / 255)
     static let sage = Color(red: 0x9D / 255, green: 0xB3 / 255, blue: 0x9A / 255)
 
-    static func barColor(utilization: Double, base: Color) -> Color {
-        switch BarTone.tone(forUtilization: utilization) {
+    static func color(for tone: BarTone, base: Color) -> Color {
+        switch tone {
         case .normal: return base
         case .warning: return amber
         case .critical: return softRed
         }
+    }
+
+    static func barColor(utilization: Double, base: Color) -> Color {
+        color(for: BarTone.tone(forUtilization: utilization), base: base)
     }
 }
 
@@ -95,20 +99,29 @@ struct PillView: View {
                 // rows. Header and identity render only when ≥1 Claude row is
                 // visible in the current mode (hidden-Claude carve-out).
                 if showSession || showWeek {
+                    // Red alert at 90% weekly: tones for BOTH Claude bars come
+                    // from one place, so the session bar flares with the week.
+                    let tones = BarTone.claudeTones(
+                        session: model.snapshot?.session?.utilization,
+                        week: model.snapshot?.week?.utilization,
+                        redAlert90: theme.redAlert90
+                    )
                     sectionHeader("Claude")
                     if expanded && theme.showIdentity && (identity.email != nil || identity.planBadge != nil) {
                         identityStrip
                     }
                     if showSession {
                         barRow(
-                            window: model.snapshot?.session, base: Color(themeHex: theme.theme.sessionHex), symbol: "clock",
+                            window: model.snapshot?.session, base: Color(themeHex: theme.theme.sessionHex),
+                            tone: tones.session, symbol: "clock",
                             label: "Session",
                             resetText: CountdownFormatter.remaining(until: model.snapshot?.session?.resetsAt, now: now)
                         )
                     }
                     if showWeek {
                         barRow(
-                            window: model.snapshot?.week, base: Color(themeHex: theme.theme.weekHex), symbol: "calendar",
+                            window: model.snapshot?.week, base: Color(themeHex: theme.theme.weekHex),
+                            tone: tones.week, symbol: "calendar",
                             label: "Week",
                             resetText: CountdownFormatter.weekReset(model.snapshot?.week?.resetsAt, now: now)
                         )
@@ -167,7 +180,7 @@ struct PillView: View {
     }
 
     @ViewBuilder
-    private func barRow(window: UsageWindow?, base: Color, symbol: String, label: String, resetText: String) -> some View {
+    private func barRow(window: UsageWindow?, base: Color, tone: BarTone, symbol: String, label: String, resetText: String) -> some View {
         VStack(alignment: .leading, spacing: 3) {
             HStack(spacing: 9) {
                 // Icons are a compact-only device; expanded rows lead with
@@ -185,24 +198,24 @@ struct PillView: View {
                         .font(.system(size: 10, weight: .light))
                         .foregroundStyle(base.opacity(0.7))
                         .frame(width: 12)
-                    bar(window: window, base: base)
+                    bar(window: window, base: base, tone: tone)
                     Text(window.map { "\(Int($0.utilization.rounded()))%" } ?? "—")
                         .font(.system(size: 10.5, weight: .regular).monospacedDigit())
                         .foregroundStyle(.white.opacity(0.75))
                         .frame(width: 30, alignment: .trailing)
                 }
             }
-            if expanded { bar(window: window, base: base) }
+            if expanded { bar(window: window, base: base, tone: tone) }
         }
     }
 
-    private func bar(window: UsageWindow?, base: Color) -> some View {
+    private func bar(window: UsageWindow?, base: Color, tone: BarTone) -> some View {
         GeometryReader { geo in
             ZStack(alignment: .leading) {
                 Capsule().fill(.white.opacity(0.12))
                 if let window {
                     Capsule()
-                        .fill(Dusk.barColor(utilization: window.utilization, base: base))
+                        .fill(Dusk.color(for: tone, base: base))
                         .frame(width: max(geo.size.width * window.utilization / 100, window.utilization > 0 ? 4 : 0))
                 }
             }
