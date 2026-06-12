@@ -161,8 +161,10 @@ struct PillView: View {
     }
 
     private var footer: some View {
-        HStack {
-            if case .stale(let reason) = model.status {
+        // Claude-specific hints make no sense when both Claude rows are hidden.
+        let claudeVisible = isVisible(theme.sessionVisibility) || isVisible(theme.weekVisibility)
+        return HStack {
+            if claudeVisible, case .stale(let reason) = model.status {
                 if reason == .noCredentials {
                     Text("open Claude Code to sign in")
                         .font(.system(size: 9.5)).foregroundStyle(Dusk.amber.opacity(0.9))

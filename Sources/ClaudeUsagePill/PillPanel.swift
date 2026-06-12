@@ -12,15 +12,21 @@ final class PillPanel: NSPanel {
     /// Set by AppDelegate when the identity toggle changes.
     var identityEnabled = false
 
+    // Constants MEASURED via NSHostingView.fittingSize per row variant
+    // (Task 12 review): compact row 13pt + 6 spacing = 19/row over a 12pt
+    // base; expanded Claude row 22pt + 10 spacing = 32/row, provider row
+    // 13pt + 10 spacing = 23/row over a 38pt base (padding + footer); the
+    // identity strip costs 30 (20 content + 10 section spacing), NOT 18.
+    // Defaults reproduce the v1-verified frames exactly: compact 50, expanded 102.
     private var compactSize: NSSize {
-        let rows = max(pinnedClaudeRows, 0) * 16 + max(pinnedProviderRows, 0) * 14
-        return NSSize(width: 250, height: max(30, 18 + CGFloat(rows)))
+        let rows = max(pinnedClaudeRows, 0) + max(pinnedProviderRows, 0)
+        return NSSize(width: 250, height: max(30, 12 + CGFloat(rows * 19)))
     }
 
     private var currentExpandedSize: NSSize {
-        let rows = max(expandedClaudeRows, 0) * 33 + max(expandedProviderRows, 0) * 18
-        var h = max(44, 36 + CGFloat(rows))
-        if identityEnabled { h += 18 }
+        let rows = max(expandedClaudeRows, 0) * 32 + max(expandedProviderRows, 0) * 23
+        var h = max(44, 38 + CGFloat(rows))
+        if identityEnabled { h += 30 }
         return NSSize(width: 250, height: h)
     }
 

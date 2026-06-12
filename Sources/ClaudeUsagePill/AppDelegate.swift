@@ -62,6 +62,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             .sink { [weak self] _, _ in self?.syncPanelLayout() }
             .store(in: &cancellables)
 
+        // Any rows change (settings add/remove/visibility → reload()) resizes
+        // the pill — future reload() call sites need no manual sync call.
+        providersModel.$rows
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in self?.syncPanelLayout() }
+            .store(in: &cancellables)
+
         Task { @MainActor in await self.model.refresh() }
         Task { @MainActor in await self.providersModel.refreshAll() }
 
