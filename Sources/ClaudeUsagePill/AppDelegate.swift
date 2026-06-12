@@ -50,12 +50,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         )
 
+        // Smart first-launch default (plan Task 3): decide whether this is the
+        // very first run BEFORE importLegacyIfNeeded — that call sets the
+        // didImportV1 marker, so the capture must precede it.
+        let wasFirstRun = UserDefaults.standard.object(forKey: ThemeSettings.didImportV1Key) == nil
         // One-shot import of the v1 app's appearance settings, BEFORE the
         // store reads our domain. Read-only against the legacy domain.
         ThemeSettings.importLegacyIfNeeded(
             from: UserDefaults(suiteName: ThemeSettings.legacyV1Domain),
             into: .standard
         )
+        if wasFirstRun {
+            // One-shot synchronous credential presence check via the SAME
+            // read-only loader CredentialsCache wraps — this is the launch
+            // keychain read 1.0 already performs (one documented Always Allow
+            // at most; absence throws CredentialsError). Token found → write
+            // nothing, the defaults already mean .pinned. Not found/unreadable
+            // → start with both Claude rows hidden, persisted through
+            // ThemeSettings' own key constants BEFORE ThemeStore loads them,
+            // so a non-Claude user gets the empty-capsule hint instead of two
+            // dead bars.
+            if (try? provider.load()) == nil {
+                let hidden = ProviderSpec.Visibility.hidden.rawValue
+                UserDefaults.standard.set(hidden, forKey: ThemeSettings.sessionVisibilityKey)
+                UserDefaults.standard.set(hidden, forKey: ThemeSettings.weekVisibilityKey)
+            }
+        }
         themeStore = ThemeStore()
         let profileFetcher = ProfileFetcher(cache: cache)
         identityModel = IdentityModel(cache: cache, fetchProfile: { try await profileFetcher.fetch() })

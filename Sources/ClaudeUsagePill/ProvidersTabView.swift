@@ -126,14 +126,22 @@ struct ProvidersTabView: View {
 
     // MARK: list page
 
+    /// Path-A "removed" semantics: both Claude visibilities hidden ⇒ the row
+    /// disappears from the list (and the catalog offers Claude again, Task 4).
+    private var claudeRemoved: Bool {
+        themeStore.sessionVisibility == .hidden && themeStore.weekVisibility == .hidden
+    }
+
     private var listPage: some View {
-        // +1 for the built-in Claude row, +1 for addRow.
-        let totalRows = specs.count + 2
+        // +1 for the built-in Claude row (when present), +1 for addRow.
+        let totalRows = specs.count + (claudeRemoved ? 1 : 2)
         let scrolls = totalRows > 10
         return SettingsPage(scrolls: scrolls) {
             SettingsCard {
-                claudeRow
-                CardDivider()
+                if !claudeRemoved {
+                    claudeRow
+                    CardDivider()
+                }
                 ForEach(specs) { spec in
                     providerRow(spec)
                     CardDivider()
@@ -322,6 +330,7 @@ struct ClaudeSettingsPage: View {
     /// Captured ONCE on page entry (@State keeps the first value across
     /// parent re-renders, which re-init this struct mid-edit).
     @State private var entrySnapshot: ThemeStore.Snapshot
+    @State private var confirmRemove = false
 
     init(themeStore: ThemeStore, onClose: @escaping () -> Void) {
         self.themeStore = themeStore
@@ -375,6 +384,18 @@ struct ClaudeSettingsPage: View {
                 }
             }
             CardFooter(text: "\u{201C}On Hover\u{201D} rows appear only in the hover-expanded card.")
+            SettingsCard {
+                Button {
+                    confirmRemove = true
+                } label: {
+                    Text("Remove Provider…")
+                        .foregroundStyle(.red)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 9)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
         } buttons: {
             Button("Back") {
                 themeStore.restore(entrySnapshot) // undo everything since entry
@@ -384,6 +405,21 @@ struct ClaudeSettingsPage: View {
             Button("Done") { onClose() }
                 .buttonStyle(AccentCapsuleButtonStyle())
                 .keyboardShortcut(.defaultAction)
+        }
+        .confirmationDialog(
+            "Hide Claude from the pill?",
+            isPresented: $confirmRemove
+        ) {
+            // Path-A facade: "remove" just hides both built-in rows — nothing
+            // is deleted, no keychain item is touched, and re-adding from the
+            // catalog flips them back.
+            Button("Remove Provider", role: .destructive) {
+                themeStore.setSessionVisibility(.hidden)
+                themeStore.setWeekVisibility(.hidden)
+                onClose() // straight back to the list; no snapshot restore
+            }
+        } message: {
+            Text("Your Claude Code sign-in is untouched.")
         }
     }
 

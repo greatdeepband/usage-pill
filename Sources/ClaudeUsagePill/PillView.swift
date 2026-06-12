@@ -75,16 +75,16 @@ struct PillView: View {
         let showWeek = isVisible(theme.weekVisibility)
         let providerRows = visibleProviderRows
         VStack(alignment: .leading, spacing: expanded ? 10 : 6) {
-            // True empty: no rows at all in either mode → prompt user to open Settings.
+            // True empty: no rows at all in either mode → prompt user to open
+            // Settings (one branch — it renders in compact AND expanded).
             // Compact with no pinned rows but expanded has content → quiet ellipsis
             // (hovering reveals the rows); avoids a misleading prompt when the pill
             // is intentionally configured with expanded-only rows.
-            // Expanded empty state is unchanged: "open Settings" still shown.
             let noClaudeEver = theme.sessionVisibility == .hidden && theme.weekVisibility == .hidden
             let allRowsEmpty = providers.rows.isEmpty && noClaudeEver
             let compactNothingPinned = !expanded && !showSession && !showWeek && providerRows.isEmpty
             if allRowsEmpty {
-                Text("open Settings")
+                Text("open Settings to connect a provider")
                     .font(.system(size: 9.5))
                     .foregroundStyle(.white.opacity(0.5))
                     .frame(maxWidth: .infinity, alignment: .center)
