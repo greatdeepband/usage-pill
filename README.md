@@ -1,4 +1,6 @@
-# Claude Usage Pill
+# Usage Pill
+
+The multi-provider successor to [Claude Usage Pill](https://github.com/greatdeepband/claude-usage-pill) — an always-on-top macOS widget that shows all your AI usage meters: Claude plan windows, API balances, and spend across providers.
 
 A tiny always-on-top macOS widget showing your Claude usage as two slim bars:
 the **5-hour session** window (clay) and the **weekly** limit (dusty blue).
@@ -36,8 +38,8 @@ Hover to expand it into a card with reset countdowns and data freshness.
 ```bash
 ./scripts/make-signing-cert.sh   # one-time: stable signing identity (one password prompt)
 ./scripts/make-app.sh
-cp -R "build/Claude Usage Pill.app" /Applications/
-open "/Applications/Claude Usage Pill.app"
+cp -R "build/Usage Pill.app" /Applications/
+open "/Applications/Usage Pill.app"
 ```
 
 On first launch, approve the keychain prompt with **Always Allow**. Thanks to
@@ -73,8 +75,8 @@ credential key structure (no secret values) — useful if the API shape changes.
 ## Uninstall
 
 Quit from the menu-bar gauge icon, toggle Launch at Login off first if you
-enabled it, then delete `/Applications/Claude Usage Pill.app` and
-`defaults delete pl.bbi.claude-usage-pill`.
+enabled it, then delete `/Applications/Usage Pill.app` and
+`defaults delete pl.bbi.usage-pill`.
 
 ## Disclaimer
 

@@ -46,13 +46,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         // Create timer and add to .common so it fires even while menus or drags
         // are tracking (which run the RunLoop in a tracking mode, not .default).
-        // 180s: the usage endpoint tolerates roughly one request per 2 minutes
-        // sustained (observed 2026-06-11 — 60s polling drew alternating 429s);
-        // 3 minutes keeps a comfortable margin and the bars move slowly anyway.
-        let t = Timer(timeInterval: 180, repeats: true) { [weak self] _ in
+        // 360s: two pills may run side-by-side (the frozen v1.x app polls at 180s);
+        // combined Claude polling must stay under the endpoint's ~30 req/h tolerance
+        // — see plan Task 0.
+        let t = Timer(timeInterval: 360, repeats: true) { [weak self] _ in
             Task { @MainActor in await self?.model.refresh() }
         }
-        t.tolerance = 20 // let the OS coalesce wake-ups
+        t.tolerance = 30 // let the OS coalesce wake-ups
         RunLoop.main.add(t, forMode: .common)
         timer = t
 

@@ -7,7 +7,7 @@ import AppKit
 // kill the installed copy first when developing.
 let current = NSRunningApplication.current
 let copies = NSRunningApplication.runningApplications(
-    withBundleIdentifier: Bundle.main.bundleIdentifier ?? "pl.bbi.claude-usage-pill"
+    withBundleIdentifier: Bundle.main.bundleIdentifier ?? "pl.bbi.usage-pill"
 )
 let myLaunch = current.launchDate ?? .distantPast
 if copies.contains(where: { other in

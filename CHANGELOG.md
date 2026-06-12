@@ -1,5 +1,11 @@
 # Changelog
 
+## v2.0.0 — in development
+
+Forked from claude-usage-pill v1.2.4 as a separate app (new bundle id
+pl.bbi.usage-pill). Multi-provider support arrives in this line; the v1.x
+entries below are preserved for provenance.
+
 ## v1.2.4 — 2026-06-12
 
 - **App icon.** The widget now wears its own blue-pill icon in Finder,

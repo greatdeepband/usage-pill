@@ -2,7 +2,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 swift build -c release
-APP="build/Claude Usage Pill.app"
+APP="build/Usage Pill.app"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp .build/release/ClaudeUsagePill "$APP/Contents/MacOS/"

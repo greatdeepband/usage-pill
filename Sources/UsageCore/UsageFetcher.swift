@@ -44,7 +44,7 @@ public enum UsageRequestBuilder {
 }
 
 public struct UsageFetcher: Sendable {
-    private static let log = Logger(subsystem: "pl.bbi.claude-usage-pill", category: "fetch")
+    private static let log = Logger(subsystem: "pl.bbi.usage-pill", category: "fetch")
     private let cache: CredentialsCache
     private let session: URLSession
 
