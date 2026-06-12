@@ -8,6 +8,7 @@ public enum DotPath {
         guard !path.isEmpty else { return nil }
         var current: Any = json
         for component in path.split(separator: ".", omittingEmptySubsequences: false) {
+            // Dict key checked before array index: a numeric component resolves as a dict key when one exists.
             if let dict = current as? [String: Any], let next = dict[String(component)] {
                 current = next
             } else if let arr = current as? [Any], let idx = Int(component),

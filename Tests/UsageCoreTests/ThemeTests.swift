@@ -2,28 +2,6 @@ import Foundation
 import Testing
 @testable import UsageCore
 
-/// Creates a fresh UserDefaults with a unique suite name, runs `body`, then
-/// removes the persistent domain and deletes the backing plist so no
-/// theme-tests-*.plist leaks to ~/Library/Preferences.
-private func withFreshDefaults(_ body: (UserDefaults) -> Void) {
-    let name = "theme-tests-\(UUID().uuidString)"
-    let plistURL = FileManager.default
-        .homeDirectoryForCurrentUser
-        .appendingPathComponent("Library/Preferences/\(name).plist")
-    let d = UserDefaults(suiteName: name)!
-    d.removePersistentDomain(forName: name)
-    defer {
-        // Flush any pending CFPreferences writes to disk first, then remove
-        // the domain in-memory, then flush the now-empty state to disk, and
-        // finally delete the file. The double-synchronize ensures cfprefsd
-        // does not race us with a stale write after our removeItem.
-        d.synchronize()
-        d.removePersistentDomain(forName: name)
-        d.synchronize()
-        try? FileManager.default.removeItem(at: plistURL)
-    }
-    body(d)
-}
 
 @Test func presetsHaveExpectedColors() {
     #expect(Palette.dusk.preset == Theme(sessionHex: "#C9A283FF", weekHex: "#8FA3C2FF"))
@@ -33,7 +11,7 @@ private func withFreshDefaults(_ body: (UserDefaults) -> Void) {
 }
 
 @Test func loadDefaultsToDuskWithIdentityOff() {
-    withFreshDefaults { d in
+    TestDefaults.withFresh(prefix: "theme-tests-") { d in
         let s = ThemeSettings(defaults: d)
         let loaded = s.load()
         #expect(loaded.theme == Palette.dusk.preset!)
@@ -43,7 +21,7 @@ private func withFreshDefaults(_ body: (UserDefaults) -> Void) {
 }
 
 @Test func saveLoadRoundTrip() {
-    withFreshDefaults { d in
+    TestDefaults.withFresh(prefix: "theme-tests-") { d in
         let s = ThemeSettings(defaults: d)
         let custom = Theme(sessionHex: "#11223344", weekHex: "#55667788")
         s.save(theme: custom, palette: .custom, showIdentity: true)
@@ -55,7 +33,7 @@ private func withFreshDefaults(_ body: (UserDefaults) -> Void) {
 }
 
 @Test func corruptHexFallsBackToDusk() {
-    withFreshDefaults { d in
+    TestDefaults.withFresh(prefix: "theme-tests-") { d in
         d.set("not-a-color", forKey: "theme.session")
         d.set("#55667788", forKey: "theme.week")
         d.set("custom", forKey: "theme.palette")
@@ -66,14 +44,14 @@ private func withFreshDefaults(_ body: (UserDefaults) -> Void) {
 }
 
 @Test func unknownPaletteNameFallsBackToDusk() {
-    withFreshDefaults { d in
+    TestDefaults.withFresh(prefix: "theme-tests-") { d in
         d.set("neon", forKey: "theme.palette")
         #expect(ThemeSettings(defaults: d).load().palette == .dusk)
     }
 }
 
 @Test func fallbackPreservesIdentityToggle() {
-    withFreshDefaults { d in
+    TestDefaults.withFresh(prefix: "theme-tests-") { d in
         d.set("not-a-color", forKey: "theme.session")
         d.set(true, forKey: "identity.show")
         let loaded = ThemeSettings(defaults: d).load()

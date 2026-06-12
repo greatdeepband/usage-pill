@@ -2,22 +2,6 @@ import Testing
 import Foundation
 @testable import UsageCore
 
-// Leak-free defaults helper — same pattern as ThemeTests.swift
-private func withFreshDefaults(_ body: (UserDefaults) -> Void) {
-    let name = "provider-spec-tests-\(UUID().uuidString)"
-    let plistURL = FileManager.default
-        .homeDirectoryForCurrentUser
-        .appendingPathComponent("Library/Preferences/\(name).plist")
-    let d = UserDefaults(suiteName: name)!
-    d.removePersistentDomain(forName: name)
-    defer {
-        d.synchronize()
-        d.removePersistentDomain(forName: name)
-        d.synchronize()
-        try? FileManager.default.removeItem(at: plistURL)
-    }
-    body(d)
-}
 
 private func sampleSpec() -> ProviderSpec {
     ProviderSpec(
@@ -38,7 +22,7 @@ private func sampleSpec() -> ProviderSpec {
 }
 
 @Test func roundTripsThroughStore() {
-    withFreshDefaults { d in
+    TestDefaults.withFresh(prefix: "provider-spec-tests-") { d in
         let spec = sampleSpec()
         let store = ProviderSpecStore(defaults: d)
         store.save([spec])
@@ -49,7 +33,7 @@ private func sampleSpec() -> ProviderSpec {
 }
 
 @Test func corruptEntryIsDroppedOthersSurvive() {
-    withFreshDefaults { d in
+    TestDefaults.withFresh(prefix: "provider-spec-tests-") { d in
         // Build a good spec as a plain dictionary
         let goodSpec = sampleSpec()
         let goodDict: [String: Any] = [
@@ -82,13 +66,18 @@ private func sampleSpec() -> ProviderSpec {
 }
 
 @Test func missingOrGarbageBlobYieldsEmpty() {
-    withFreshDefaults { d in
+    TestDefaults.withFresh(prefix: "provider-spec-tests-") { d in
         // No key → empty
         #expect(ProviderSpecStore(defaults: d).load().isEmpty)
     }
-    withFreshDefaults { d in
+    TestDefaults.withFresh(prefix: "provider-spec-tests-") { d in
         // Garbage data → empty
         d.set(Data("garbage".utf8), forKey: ProviderSpecStore.key)
+        #expect(ProviderSpecStore(defaults: d).load().isEmpty)
+    }
+    TestDefaults.withFresh(prefix: "provider-spec-tests-") { d in
+        // Object (not an array) blob → empty
+        d.set(Data(#"{"key":"value"}"#.utf8), forKey: ProviderSpecStore.key)
         #expect(ProviderSpecStore(defaults: d).load().isEmpty)
     }
 }

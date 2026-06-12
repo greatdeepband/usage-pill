@@ -20,8 +20,9 @@ private func json(_ s: String) -> Any {
 }
 
 @Test func rejectsBooleansMissingPathsAndBadIndices() {
-    let j = json(#"{"flag":true,"arr":[1,2]}"#)
+    let j = json(#"{"flag":true,"off":false,"arr":[1,2]}"#)
     #expect(DotPath.resolve("flag", in: j) == nil)
+    #expect(DotPath.resolve("off", in: j) == nil)
     #expect(DotPath.resolve("nope.deep", in: j) == nil)
     #expect(DotPath.resolve("arr.5", in: j) == nil)
     #expect(DotPath.resolve("arr.-1", in: j) == nil)
