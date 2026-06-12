@@ -218,4 +218,14 @@ struct ProviderEngineTests {
             _ = try await engine.fetchValue(spec: spec, key: "k1")
         }
     }
+    // Pins the arithmetic ORDER: (primary − subtract) × scale, not (primary × scale) − subtract.
+    @Test func subtractHappensBeforeScale() async throws {
+        EngineStubProtocol.handler = { req in
+            let body = Data(#"{"a":10,"b":4}"#.utf8)
+            return (body, HTTPURLResponse(url: req.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
+        }
+        let spec = makeSpec(valuePath: "a", subtractPath: "b", scale: 2)
+        let value = try await ProviderEngine(session: makeEngineSession()).fetchValue(spec: spec, key: "k1")
+        #expect(value == 12) // (10 − 4) × 2 — a swapped order would yield 16
+    }
 }

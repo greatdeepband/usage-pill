@@ -101,11 +101,17 @@ struct ProviderProbeTests {
         ]
         var deepFields: [DiscoveredField] = []
         ProviderProbe.flatten(deep, path: "", depth: 0, into: &deepFields)
-        // All returned paths must have at most 6 dot-separated components
-        for f in deepFields {
-            let components = f.path.split(separator: ".").count
-            #expect(components <= 6)
-        }
+        // The 8-level leaf is BEYOND the cap → nothing returned at all.
+        #expect(deepFields.isEmpty)
+
+        // Positive borderline: a leaf reached at exactly depth 6 IS returned —
+        // this is the live coverage of the cap (without it, the cap could be
+        // broken to `depth <= 0` and the test above would still pass).
+        let borderline: [String: Any] = ["a": ["b": ["c": ["d": ["e": ["f": 42.0]]]]]]
+        var borderFields: [DiscoveredField] = []
+        ProviderProbe.flatten(borderline, path: "", depth: 0, into: &borderFields)
+        #expect(borderFields.count == 1)
+        #expect(borderFields.first?.path == "a.b.c.d.e.f")
 
         // Build an object with 60 numeric fields
         var wideObj: [String: Any] = [:]
