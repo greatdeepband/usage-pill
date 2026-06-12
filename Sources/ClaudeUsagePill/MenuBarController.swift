@@ -18,7 +18,7 @@ final class MenuBarController: NSObject {
         super.init()
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         statusItem.button?.image = NSImage(
-            systemSymbolName: "gauge.with.needle", accessibilityDescription: "Claude Usage"
+            systemSymbolName: "gauge.with.needle", accessibilityDescription: "Usage Pill"
         )
         let menu = NSMenu()
         let refreshItem = NSMenuItem(title: "Refresh Now", action: #selector(refresh), keyEquivalent: "r")
@@ -27,7 +27,7 @@ final class MenuBarController: NSObject {
         loginItem.target = self
         let settingsItem = NSMenuItem(title: "Settings…", action: #selector(openSettings), keyEquivalent: ",")
         settingsItem.target = self
-        let quitItem = NSMenuItem(title: "Quit Claude Usage Pill", action: #selector(quit), keyEquivalent: "q")
+        let quitItem = NSMenuItem(title: "Quit Usage Pill", action: #selector(quit), keyEquivalent: "q")
         quitItem.target = self
         menu.addItem(refreshItem)
         menu.addItem(loginItem)
@@ -50,7 +50,7 @@ final class MenuBarController: NSObject {
         guard Bundle.main.bundlePath.hasPrefix("/Applications") else {
             let alert = NSAlert()
             alert.messageText = "Move to Applications first"
-            alert.informativeText = "Launch at Login needs the app to live in /Applications so it can be found at login. Copy \"Claude Usage Pill.app\" there and toggle this again."
+            alert.informativeText = "Launch at Login needs the app to live in /Applications so it can be found at login. Copy \"Usage Pill.app\" there and toggle this again."
             alert.alertStyle = .informational
             NSApp.activate(ignoringOtherApps: true)
             alert.runModal()

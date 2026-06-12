@@ -1,10 +1,11 @@
 import SwiftUI
 import UsageCore
 
-/// "Providers" settings tab: the Claude plan row plus one row per stored
-/// ProviderSpec, each opening a detail sheet. Every mutation follows the same
-/// path: edit the local specs array → specStore.save → providersModel.reload()
-/// — AppDelegate's $rows sink then resizes the pill automatically.
+/// The single settings pane: the Claude plan row plus one row per stored
+/// ProviderSpec, each opening a detail sheet (appearance lives in the
+/// sheets). Every mutation follows the same path: edit the local specs array
+/// → specStore.save → providersModel.reload() — AppDelegate's $rows sink
+/// then resizes the pill automatically.
 ///
 /// Reordering: SwiftUI's .onMove has no effect inside a macOS Form (Form is
 /// not List-backed on macOS, so ForEach gets no drag affordance). Fallback per
@@ -242,9 +243,12 @@ struct ProvidersTabView: View {
 
 // MARK: - Claude detail sheet
 
-/// Visibility pickers for the two built-in Claude rows. Bindings write
-/// straight to ThemeStore (live; AppDelegate's visibility sink resizes the
-/// pill immediately), so the only button is Done.
+/// Appearance + visibility for the two built-in Claude rows: palette
+/// swatches, custom color wells and the identity toggle (relocated from the
+/// removed Appearance tab — same rendering and semantics), then the
+/// visibility pickers. Bindings write straight to ThemeStore (live;
+/// AppDelegate's sinks restyle/resize the pill immediately), so the only
+/// button is Done.
 struct ClaudeDetailSheet: View {
     @ObservedObject var themeStore: ThemeStore
     @Environment(\.dismiss) private var dismiss
@@ -252,6 +256,29 @@ struct ClaudeDetailSheet: View {
     var body: some View {
         VStack(spacing: 0) {
             Form {
+                Section {
+                    swatchRow
+                } header: {
+                    Text("Palette")
+                }
+                Section {
+                    ColorPicker(
+                        "Session bar",
+                        selection: binding(\.sessionHex, set: themeStore.setSessionHex)
+                    )
+                    ColorPicker(
+                        "Week bar",
+                        selection: binding(\.weekHex, set: themeStore.setWeekHex)
+                    )
+                } header: {
+                    Text("Custom colors")
+                }
+                Section {
+                    Toggle("Show account & plan", isOn: $themeStore.showIdentity)
+                        .toggleStyle(.switch)
+                } footer: {
+                    Text("Appears only in the hover-expanded card.")
+                }
                 Section {
                     Picker("Session", selection: Binding(
                         get: { themeStore.sessionVisibility },
@@ -287,6 +314,79 @@ struct ClaudeDetailSheet: View {
         .frame(width: 360)
         .fixedSize(horizontal: false, vertical: true)
     }
+
+    private func binding(
+        _ keyPath: KeyPath<Theme, String>,
+        set: @escaping (String) -> Void
+    ) -> Binding<Color> {
+        Binding(
+            get: { Color(themeHex: themeStore.theme[keyPath: keyPath]) },
+            set: { if let hex = $0.themeHex { set(hex) } }
+        )
+    }
+
+    private var swatchRow: some View {
+        // First swatch flush left, Custom flush right, the rest distributed
+        // evenly between.
+        HStack(spacing: 0) {
+            swatch(for: .dusk)
+            Spacer()
+            swatch(for: .mist)
+            Spacer()
+            swatch(for: .sage)
+            Spacer()
+            customSwatch
+        }
+    }
+
+    private func swatch(for p: Palette) -> some View {
+        // Callers pass only preset palettes; fall back to Dusk rather than
+        // trapping if a preset-less case ever arrives.
+        let t = p.preset ?? Palette.dusk.preset!
+        return VStack(spacing: 3) {
+            ZStack {
+                swatchBackdrop // so Mist's translucency reads
+                VStack(spacing: 5) {
+                    Capsule().fill(Color(themeHex: t.sessionHex)).frame(width: 38, height: 5)
+                    Capsule().fill(Color(themeHex: t.weekHex)).frame(width: 38, height: 5)
+                }
+            }
+            .frame(width: 60, height: 28)
+            .clipShape(RoundedRectangle(cornerRadius: 6))
+            .overlay(
+                RoundedRectangle(cornerRadius: 6)
+                    .stroke(themeStore.palette == p ? Color.accentColor : Color.primary.opacity(0.1),
+                            lineWidth: themeStore.palette == p ? 2 : 1)
+            )
+            Text(p.rawValue.capitalized).font(.system(size: 9)).foregroundStyle(.secondary)
+        }
+        .onTapGesture { themeStore.select(p) }
+    }
+
+    private var customSwatch: some View {
+        VStack(spacing: 3) {
+            ZStack {
+                swatchBackdrop
+                Image(systemName: "paintbrush")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.white.opacity(0.6))
+            }
+            .frame(width: 60, height: 28)
+            .clipShape(RoundedRectangle(cornerRadius: 6))
+            .overlay(
+                RoundedRectangle(cornerRadius: 6)
+                    .stroke(themeStore.palette == .custom ? Color.accentColor : Color.primary.opacity(0.1),
+                            lineWidth: themeStore.palette == .custom ? 2 : 1)
+            )
+            Text("Custom").font(.system(size: 9)).foregroundStyle(.secondary)
+        }
+    }
+}
+
+/// Pill-dark tile background shared by every swatch, so translucent colors
+/// (Mist) read the way they do in the pill.
+private var swatchBackdrop: Color {
+    Color(red: 28 / 255, green: 30 / 255, blue: 38 / 255)
 }
 
 @ViewBuilder
@@ -294,6 +394,133 @@ private var visibilityOptions: some View {
     Text("Pinned").tag(ProviderSpec.Visibility.pinned)
     Text("On Hover").tag(ProviderSpec.Visibility.expandedOnly)
     Text("Hidden").tag(ProviderSpec.Visibility.hidden)
+}
+
+// MARK: - Provider accent palette
+
+/// Single-accent propositions for provider rows — one per theme family,
+/// each using its family's SESSION color (exact Palette.preset hexes from
+/// Theme.swift). Sage's session color IS the default sage, so Sage doubles
+/// as the default proposition and writes accentHex nil; Custom is the free
+/// ColorPicker.
+enum ProviderAccent: Equatable {
+    case sage   // default — accentHex nil (#9DB39AFF rendered)
+    case clay   // Dusk family session color #C9A283FF
+    case mist   // Mist family session color #FFFFFFBF
+    case custom // free pick via the ColorPicker
+
+    /// What Done/Add writes to accentHex. nil for sage (the default) and for
+    /// custom (the sheet writes the picker's hex instead).
+    var accentHex: String? {
+        switch self {
+        case .sage, .custom: return nil
+        case .clay: return Palette.dusk.preset!.sessionHex
+        case .mist: return Palette.mist.preset!.sessionHex
+        }
+    }
+
+    /// Tile color; nil for custom (it shows the paintbrush glyph).
+    var swatchHex: String? {
+        switch self {
+        case .sage: return Palette.sage.preset!.sessionHex
+        case .clay, .mist: return accentHex
+        case .custom: return nil
+        }
+    }
+
+    var label: String {
+        switch self {
+        case .sage: return "Sage"
+        case .clay: return "Clay"
+        case .mist: return "Mist"
+        case .custom: return "Custom"
+        }
+    }
+
+    /// Which proposition a stored accentHex represents. Compares parsed
+    /// components, not strings, so 6- and 8-digit spellings of the same
+    /// color match. A hex equal to the default sage maps to .sage — it
+    /// renders identically.
+    static func from(accentHex: String?) -> ProviderAccent {
+        guard let hex = accentHex, let rgba = ThemeColor.parse(hex) else { return .sage }
+        for accent: ProviderAccent in [.sage, .clay, .mist]
+        where ThemeColor.parse(accent.swatchHex!) == rgba {
+            return accent
+        }
+        return .custom
+    }
+}
+
+/// The "Palette" form row shared by ProviderDetailSheet and the add flow's
+/// finish step: one single-bar capsule tile per proposition + a Custom tile,
+/// with the same selection-ring styling as the Claude swatches. Tapping a
+/// proposition selects it (and parks the custom well on its color); Custom
+/// is selected by touching the ColorPicker below, exactly like the Claude
+/// pane's semantics.
+struct ProviderAccentSwatchRow: View {
+    @Binding var accent: ProviderAccent
+    @Binding var color: Color
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Palette")
+                .font(.caption.weight(.medium))
+                .foregroundStyle(.secondary)
+            HStack(alignment: .top, spacing: 0) {
+                swatch(for: .sage)
+                Spacer()
+                swatch(for: .clay)
+                Spacer()
+                swatch(for: .mist)
+                Spacer()
+                customSwatch
+            }
+        }
+        .padding(.vertical, 2)
+    }
+
+    private func swatch(for p: ProviderAccent) -> some View {
+        VStack(spacing: 3) {
+            ZStack {
+                swatchBackdrop // so Mist's translucency reads
+                Capsule()
+                    .fill(Color(themeHex: p.swatchHex ?? "#FFFFFFFF"))
+                    .frame(width: 38, height: 5)
+            }
+            .frame(width: 60, height: 28)
+            .clipShape(RoundedRectangle(cornerRadius: 6))
+            .overlay(selectionRing(selected: accent == p))
+            Text(p.label).font(.system(size: 9)).foregroundStyle(.secondary)
+            if p == .sage {
+                Text("default").font(.system(size: 8)).foregroundStyle(.tertiary)
+            }
+        }
+        .onTapGesture {
+            accent = p
+            if let hex = p.swatchHex { color = Color(themeHex: hex) }
+        }
+    }
+
+    private var customSwatch: some View {
+        VStack(spacing: 3) {
+            ZStack {
+                swatchBackdrop
+                Image(systemName: "paintbrush")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.white.opacity(0.6))
+            }
+            .frame(width: 60, height: 28)
+            .clipShape(RoundedRectangle(cornerRadius: 6))
+            .overlay(selectionRing(selected: accent == .custom))
+            Text("Custom").font(.system(size: 9)).foregroundStyle(.secondary)
+        }
+    }
+
+    private func selectionRing(selected: Bool) -> some View {
+        RoundedRectangle(cornerRadius: 6)
+            .stroke(selected ? Color.accentColor : Color.primary.opacity(0.1),
+                    lineWidth: selected ? 2 : 1)
+    }
 }
 
 // MARK: - Provider detail sheet
@@ -312,14 +539,15 @@ struct ProviderDetailSheet: View {
     @State private var name: String
     @State private var keyField = ""
     @State private var warnText: String
+    @State private var accent: ProviderAccent
     @State private var color: Color
     @State private var visibility: ProviderSpec.Visibility
     @State private var confirmRemove = false
     @State private var keySaveError: String?
     private let maskedKey: String?
-    /// Round-tripped initial color; if Done sees the same hex the user never
-    /// touched the picker and we keep accentHex as-is (nil stays nil → the
-    /// row keeps following the default sage).
+    /// Round-tripped initial color; if Done lands on .custom with this same
+    /// hex the user never actually moved the picker, so accentHex is kept
+    /// as-is (nil stays nil → the row keeps following the default sage).
     private let initialHex: String?
 
     /// nil accentHex renders as the default sage (#9DB39A) in the pill.
@@ -335,6 +563,7 @@ struct ProviderDetailSheet: View {
         self.onDelete = onDelete
         _name = State(initialValue: spec.displayName)
         _warnText = State(initialValue: spec.warnBelow.map { trimmedNumber($0) } ?? "")
+        _accent = State(initialValue: ProviderAccent.from(accentHex: spec.accentHex))
         let c = Color(themeHex: spec.accentHex ?? Self.defaultAccent)
         _color = State(initialValue: c)
         _visibility = State(initialValue: spec.visibility)
@@ -367,7 +596,8 @@ struct ProviderDetailSheet: View {
                                 .frame(width: 70)
                         }
                     }
-                    ColorPicker("Color", selection: $color, supportsOpacity: false)
+                    ProviderAccentSwatchRow(accent: $accent, color: $color)
+                    ColorPicker("Custom", selection: customColorBinding, supportsOpacity: false)
                     Picker("Show in Pill", selection: $visibility) {
                         visibilityOptions
                     }
@@ -412,6 +642,15 @@ struct ProviderDetailSheet: View {
         }
     }
 
+    /// Touching the custom well IS choosing Custom (mirrors the Claude
+    /// pane, where moving a color well switches the palette to .custom).
+    private var customColorBinding: Binding<Color> {
+        Binding(
+            get: { color },
+            set: { color = $0; accent = .custom }
+        )
+    }
+
     private func save() {
         var updated = spec
         let trimmedName = name.trimmingCharacters(in: .whitespaces)
@@ -423,8 +662,17 @@ struct ProviderDetailSheet: View {
                 .replacingOccurrences(of: ",", with: ".")
         ).flatMap { $0 > 0 ? $0 : nil }
         updated.visibility = visibility
-        if let hex = color.themeHex, hex != initialHex {
-            updated.accentHex = hex
+        switch accent {
+        case .sage:
+            updated.accentHex = nil // default — row follows the default sage
+        case .clay, .mist:
+            updated.accentHex = accent.accentHex
+        case .custom:
+            // initialHex guard: a .custom landed on without ever moving the
+            // picker (or moved back to the start) keeps accentHex as-is.
+            if let hex = color.themeHex, hex != initialHex {
+                updated.accentHex = hex
+            }
         }
         var keyReplaced = false
         if !keyField.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {

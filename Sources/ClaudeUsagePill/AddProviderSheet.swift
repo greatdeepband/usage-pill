@@ -51,10 +51,11 @@ struct AddProviderSheet: View {
     @State private var showAs: ProviderSpec.ValueKind = .currency
     @State private var warnText = ""
     @State private var saveErrorText: String?
+    @State private var accent: ProviderAccent = .sage // default proposition
     @State private var color: Color
-    /// Round-tripped initial color; if Add sees the same hex the user never
-    /// touched the picker and accentHex stays nil (row follows the default
-    /// sage) — same pattern as ProviderDetailSheet.
+    /// Round-tripped initial color; if Add lands on .custom with this same
+    /// hex the user never actually moved the picker and accentHex stays nil
+    /// (row follows the default sage) — same pattern as ProviderDetailSheet.
     private let initialHex: String?
 
     /// nil accentHex renders as the default sage (#9DB39A) in the pill.
@@ -375,7 +376,8 @@ struct AddProviderSheet: View {
                             .frame(width: 70)
                     }
                 }
-                ColorPicker("Color", selection: $color, supportsOpacity: false)
+                ProviderAccentSwatchRow(accent: $accent, color: $color)
+                ColorPicker("Custom", selection: customColorBinding, supportsOpacity: false)
             } footer: {
                 if let saveErrorText {
                     Text(saveErrorText)
@@ -389,10 +391,28 @@ struct AddProviderSheet: View {
         .scrollDisabled(true)
     }
 
+    /// Touching the custom well IS choosing Custom (mirrors the Claude
+    /// pane, where moving a color well switches the palette to .custom).
+    private var customColorBinding: Binding<Color> {
+        Binding(
+            get: { color },
+            set: { color = $0; accent = .custom }
+        )
+    }
+
     private func addCustom(_ field: DiscoveredField) {
         let name = trimmed(customName)
         var accentHex: String?
-        if let hex = color.themeHex, hex != initialHex { accentHex = hex }
+        switch accent {
+        case .sage:
+            accentHex = nil // default — row follows the default sage
+        case .clay, .mist:
+            accentHex = accent.accentHex
+        case .custom:
+            // initialHex guard: a .custom landed on without ever moving the
+            // picker stays nil (follows the default sage).
+            if let hex = color.themeHex, hex != initialHex { accentHex = hex }
+        }
         let spec = ProviderSpec(
             id: UUID(),
             displayName: name.isEmpty
