@@ -8,6 +8,21 @@ public enum BarTone: Equatable, Sendable {
         if u >= 80 { return .warning }
         return .normal
     }
+
+    /// Tones for the two Claude bars together. When the red-alert flag is on
+    /// and the WEEK crosses 90%, BOTH bars go critical (the week is the
+    /// budget that actually runs out — the session bar joins it as a flare).
+    /// Otherwise each bar keeps its own per-utilization tone; nil (no data)
+    /// renders normal.
+    public static func claudeTones(
+        session: Double?, week: Double?, redAlert90: Bool
+    ) -> (session: BarTone, week: BarTone) {
+        if redAlert90, let week, week >= 90 {
+            return (.critical, .critical)
+        }
+        return (session.map(tone(forUtilization:)) ?? .normal,
+                week.map(tone(forUtilization:)) ?? .normal)
+    }
 }
 
 public enum CountdownFormatter {

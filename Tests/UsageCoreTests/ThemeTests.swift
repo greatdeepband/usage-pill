@@ -25,11 +25,33 @@ import Testing
         let s = ThemeSettings(defaults: d)
         let custom = Theme(sessionHex: "#11223344", weekHex: "#55667788")
         s.save(theme: custom, palette: .custom, showIdentity: true,
-               sessionVisibility: .pinned, weekVisibility: .pinned)
+               sessionVisibility: .pinned, weekVisibility: .pinned, redAlert90: true)
         let loaded = ThemeSettings(defaults: d).load()
         #expect(loaded.theme == custom)
         #expect(loaded.palette == .custom)
         #expect(loaded.showIdentity == true)
+    }
+}
+
+@Test func redAlert90DefaultsTrue() {
+    TestDefaults.withFresh(prefix: "theme-tests-") { d in
+        #expect(ThemeSettings(defaults: d).load().redAlert90 == true)
+    }
+}
+
+@Test func redAlert90RoundTripsOff() {
+    TestDefaults.withFresh(prefix: "theme-tests-") { d in
+        let s = ThemeSettings(defaults: d)
+        s.save(theme: Palette.dusk.preset!, palette: .dusk, showIdentity: false,
+               sessionVisibility: .pinned, weekVisibility: .pinned, redAlert90: false)
+        #expect(ThemeSettings(defaults: d).load().redAlert90 == false)
+    }
+}
+
+@Test func corruptRedAlert90FallsBackToTrue() {
+    TestDefaults.withFresh(prefix: "theme-tests-") { d in
+        d.set("sometimes", forKey: "claude.redAlert90")
+        #expect(ThemeSettings(defaults: d).load().redAlert90 == true)
     }
 }
 
@@ -45,7 +67,7 @@ import Testing
     TestDefaults.withFresh(prefix: "theme-tests-") { d in
         let s = ThemeSettings(defaults: d)
         s.save(theme: Palette.dusk.preset!, palette: .dusk, showIdentity: false,
-               sessionVisibility: .expandedOnly, weekVisibility: .hidden)
+               sessionVisibility: .expandedOnly, weekVisibility: .hidden, redAlert90: true)
         let loaded = ThemeSettings(defaults: d).load()
         #expect(loaded.sessionVisibility == .expandedOnly)
         #expect(loaded.weekVisibility == .hidden)

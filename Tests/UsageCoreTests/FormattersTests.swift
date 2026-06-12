@@ -50,3 +50,33 @@ private let now = Date(timeIntervalSince1970: 1_781_100_000) // fixed reference
     #expect(BarTone.tone(forUtilization: 95) == .critical)
     #expect(BarTone.tone(forUtilization: 100) == .critical)
 }
+
+@Test func claudeTonesRedAlertBoundaryAt90() {
+    // 89.99: red alert NOT triggered — per-bar tones (week ≥80 → warning).
+    let below = BarTone.claudeTones(session: 10, week: 89.99, redAlert90: true)
+    #expect(below.session == .normal)
+    #expect(below.week == .warning)
+    // 90 exactly: BOTH bars critical, regardless of the session's own tone.
+    let at = BarTone.claudeTones(session: 10, week: 90, redAlert90: true)
+    #expect(at.session == .critical)
+    #expect(at.week == .critical)
+}
+
+@Test func claudeTonesDisabledFlagFollowsPerBarTones() {
+    let t = BarTone.claudeTones(session: 96, week: 92, redAlert90: false)
+    #expect(t.session == .critical) // its own ≥95 rule, not the red alert
+    #expect(t.week == .warning)     // 92 stays warning when the alert is off
+}
+
+@Test func claudeTonesNilUtilizations() {
+    let none = BarTone.claudeTones(session: nil, week: nil, redAlert90: true)
+    #expect(none.session == .normal)
+    #expect(none.week == .normal)
+    // nil week can never trip the alert; nil session still goes red with it.
+    let nilWeek = BarTone.claudeTones(session: 50, week: nil, redAlert90: true)
+    #expect(nilWeek.session == .normal)
+    #expect(nilWeek.week == .normal)
+    let nilSession = BarTone.claudeTones(session: nil, week: 95, redAlert90: true)
+    #expect(nilSession.session == .critical)
+    #expect(nilSession.week == .critical)
+}
