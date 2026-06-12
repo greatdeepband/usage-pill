@@ -220,3 +220,47 @@ private final class PMResultBox: @unchecked Sendable {
     #expect(model.rows[0].id == id2)
     #expect(!model.rows.contains(where: { $0.id == id1 }))
 }
+
+// refreshAll must run rows CONCURRENTLY: both gated fetchers must be in-flight
+// before either is released. A serial implementation never starts row 2 while
+// row 1 is gated, so `started` would stall at 1 and this test would fail at
+// the deadline (rather than hang — the gates are then released regardless).
+@Test @MainActor func refreshAllRunsRowsConcurrently() async {
+    let (defaults, cleanup) = freshDefaults()
+    defer { cleanup() }
+    let store = ProviderSpecStore(defaults: defaults)
+    store.save([makeSpec(displayName: "A"), makeSpec(displayName: "B")])
+
+    nonisolated(unsafe) var started = 0
+    nonisolated(unsafe) var gates: [CheckedContinuation<Void, Never>] = []
+
+    let model = ProvidersModel(
+        specStore: store,
+        keyLookup: { _ in "k" },
+        makeFetch: { _, _ in
+            {
+                started += 1
+                await withCheckedContinuation { gates.append($0) }
+                return 1.0
+            }
+        }
+    )
+
+    let refreshTask = Task { @MainActor in await model.refreshAll() }
+    let deadline = ContinuousClock.now.advanced(by: .seconds(5))
+    while started < 2 && ContinuousClock.now < deadline {
+        await Task.yield()
+    }
+    let overlapped = (started == 2)
+    // Release every gate that opened so the refresh task can finish either way.
+    while gates.isEmpty == false || refreshTask.isCancelled == false {
+        for gate in gates { gate.resume() }
+        gates.removeAll()
+        if started >= 2 || ContinuousClock.now >= deadline { break }
+        await Task.yield()
+    }
+    for gate in gates { gate.resume() }
+    gates.removeAll()
+    await refreshTask.value
+    #expect(overlapped) // both fetchers were in flight simultaneously
+}

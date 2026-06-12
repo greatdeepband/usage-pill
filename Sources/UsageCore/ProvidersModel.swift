@@ -52,11 +52,14 @@ public final class ProvidersModel: ObservableObject {
     }
 
     public func refreshAll(force: Bool = false) async {
-        // All ProviderRowModel.refresh calls are @MainActor — sequential
-        // iteration is equivalent to a task group here since each refresh
-        // suspends on its own fetch, yielding back to the caller between rows.
-        for row in rows {
-            await row.model.refresh(force: force)
+        // Concurrent, not serial: a slow/offline provider must not delay the
+        // others (5 rows × 10 s timeout would make a 50 s serial cycle).
+        // Unstructured same-actor tasks keep @MainActor isolation without
+        // requiring ProviderRowModel to be Sendable; their fetches overlap
+        // at the network layer while state mutations stay on the main actor.
+        let tasks = rows.map { row in
+            Task { @MainActor in await row.model.refresh(force: force) }
         }
+        for task in tasks { await task.value }
     }
 }
