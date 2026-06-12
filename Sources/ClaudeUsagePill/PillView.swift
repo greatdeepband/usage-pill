@@ -57,9 +57,6 @@ struct PillView: View {
         let showWeek = isVisible(theme.weekVisibility)
         let providerRows = visibleProviderRows
         VStack(alignment: .leading, spacing: expanded ? 10 : 6) {
-            if expanded && theme.showIdentity && (identity.email != nil || identity.planBadge != nil) {
-                identityStrip
-            }
             // True empty: no rows at all in either mode → prompt user to open Settings.
             // Compact with no pinned rows but expanded has content → quiet ellipsis
             // (hovering reveals the rows); avoids a misleading prompt when the pill
@@ -80,21 +77,32 @@ struct PillView: View {
                     .foregroundStyle(.white.opacity(0.35))
                     .frame(maxWidth: .infinity, alignment: .center)
             } else {
-                if showSession {
-                    barRow(
-                        window: model.snapshot?.session, base: Color(themeHex: theme.theme.sessionHex), symbol: "clock",
-                        label: "Session",
-                        resetText: CountdownFormatter.remaining(until: model.snapshot?.session?.resetsAt, now: now)
-                    )
+                // Claude section: header + (identity strip) + visible Claude
+                // rows. Header and identity render only when ≥1 Claude row is
+                // visible in the current mode (hidden-Claude carve-out).
+                if showSession || showWeek {
+                    sectionHeader("Claude")
+                    if expanded && theme.showIdentity && (identity.email != nil || identity.planBadge != nil) {
+                        identityStrip
+                    }
+                    if showSession {
+                        barRow(
+                            window: model.snapshot?.session, base: Color(themeHex: theme.theme.sessionHex), symbol: "clock",
+                            label: "Session",
+                            resetText: CountdownFormatter.remaining(until: model.snapshot?.session?.resetsAt, now: now)
+                        )
+                    }
+                    if showWeek {
+                        barRow(
+                            window: model.snapshot?.week, base: Color(themeHex: theme.theme.weekHex), symbol: "calendar",
+                            label: "Week",
+                            resetText: CountdownFormatter.weekReset(model.snapshot?.week?.resetsAt, now: now)
+                        )
+                    }
                 }
-                if showWeek {
-                    barRow(
-                        window: model.snapshot?.week, base: Color(themeHex: theme.theme.weekHex), symbol: "calendar",
-                        label: "Week",
-                        resetText: CountdownFormatter.weekReset(model.snapshot?.week?.resetsAt, now: now)
-                    )
-                }
+                // One section per provider: uppercased name header + its row.
                 ForEach(providerRows) { row in
+                    sectionHeader(row.spec.displayName)
                     ProviderRow(spec: row.spec, rowModel: row.model, expanded: expanded)
                 }
                 if expanded { footer }
@@ -112,6 +120,16 @@ struct PillView: View {
         .clipShape(shape)
         .overlay(shape.stroke(.white.opacity(0.12), lineWidth: 1))
         .opacity(model.status == .stale(reason: .unauthorized) ? 0.75 : 1)
+    }
+
+    /// Uppercased micro-caption above each section. Identity-strip caption
+    /// styling (bold, wide tracking, dim white); 8.5pt expanded, 7.5pt compact.
+    private func sectionHeader(_ title: String) -> some View {
+        Text(title.uppercased())
+            .font(.system(size: expanded ? 8.5 : 7.5, weight: .bold))
+            .tracking(1.6)
+            .foregroundStyle(.white.opacity(0.38))
+            .lineLimit(1)
     }
 
     private var identityStrip: some View {
@@ -136,10 +154,8 @@ struct PillView: View {
     private func barRow(window: UsageWindow?, base: Color, symbol: String, label: String, resetText: String) -> some View {
         VStack(alignment: .leading, spacing: 3) {
             HStack(spacing: 9) {
-                Image(systemName: symbol)
-                    .font(.system(size: 10, weight: .light))
-                    .foregroundStyle(base.opacity(0.7))
-                    .frame(width: 12)
+                // Icons are a compact-only device; expanded rows lead with
+                // their text label under the section header (Task 18a).
                 if expanded {
                     Text(label)
                         .font(.system(size: 11, weight: .semibold))
@@ -149,6 +165,10 @@ struct PillView: View {
                         .font(.system(size: 10))
                         .foregroundStyle(.white.opacity(0.5))
                 } else {
+                    Image(systemName: symbol)
+                        .font(.system(size: 10, weight: .light))
+                        .foregroundStyle(base.opacity(0.7))
+                        .frame(width: 12)
                     bar(window: window, base: base)
                     Text(window.map { "\(Int($0.utilization.rounded()))%" } ?? "—")
                         .font(.system(size: 10.5, weight: .regular).monospacedDigit())
@@ -227,31 +247,64 @@ struct PillView: View {
 
 /// One provider line. Separate view so each row observes its OWN
 /// ProviderRowModel — a slow provider invalidates only its row.
+///
+/// Renders under the provider's section header (drawn by PillView):
+/// expanded = two-line "Credits" row with value-of-baseline + drain bar;
+/// compact = chisel glyph + drain bar + value, column-aligned with the
+/// Claude rows (icon 12pt slot, flexible bar, trailing value).
 private struct ProviderRow: View {
     let spec: ProviderSpec
     @ObservedObject var rowModel: ProviderRowModel
     let expanded: Bool
 
     var body: some View {
-        HStack(spacing: 9) {
-            Text(String(spec.displayName.prefix(1)))
-                .font(.system(size: 9, weight: .bold))
-                .foregroundStyle(rowTint)
-                .frame(width: 12)
-            Text(spec.displayName)
-                .font(.system(size: 9.5))
-                .foregroundStyle(.white.opacity(0.6))
-                .lineLimit(1)
-            Spacer(minLength: 4)
-            if expanded, let (caption, color) = staleCaption {
-                Text(caption)
-                    .font(.system(size: 9))
-                    .foregroundStyle(color)
+        if expanded {
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 9) {
+                    Text("Credits")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(.white.opacity(0.85))
+                    Spacer(minLength: 4)
+                    if let (caption, color) = staleCaption {
+                        Text(caption)
+                            .font(.system(size: 9))
+                            .foregroundStyle(color)
+                    }
+                    Text(expandedValueText)
+                        .font(.system(size: 10.5).monospacedDigit())
+                        .foregroundStyle(rowTint.opacity(isStale ? 0.6 : 1))
+                }
+                drainBar
             }
-            Text(valueText)
-                .font(.system(size: 10.5).monospacedDigit())
-                .foregroundStyle(rowTint.opacity(expanded && isStale ? 0.6 : 1))
+        } else {
+            HStack(spacing: 9) {
+                ChiselIcon()
+                    .fill(rowTint.opacity(0.7))
+                    .frame(width: 10, height: 10)
+                    .frame(width: 12)
+                drainBar
+                Text(valueText)
+                    .font(.system(size: 10.5).monospacedDigit())
+                    .foregroundStyle(rowTint)
+                    .frame(minWidth: 30, alignment: .trailing)
+            }
         }
+    }
+
+    /// Per-launch credit drain: full at baseline, empties as value falls.
+    /// Empty track when no fraction yet (pre-first-success or zero baseline).
+    private var drainBar: some View {
+        GeometryReader { geo in
+            ZStack(alignment: .leading) {
+                Capsule().fill(.white.opacity(0.12))
+                if let fraction = rowModel.fraction {
+                    Capsule()
+                        .fill(rowTint)
+                        .frame(width: max(geo.size.width * fraction, fraction > 0 ? 4 : 0))
+                }
+            }
+        }
+        .frame(height: 5)
     }
 
     private var isStale: Bool {
@@ -279,6 +332,18 @@ private struct ProviderRow: View {
 
     private var valueText: String {
         guard let value = rowModel.value else { return "—" }
+        return formatted(value)
+    }
+
+    /// "$44.70 of $50.00" — always shows the baseline once one exists (it is
+    /// set on every success, so the plain-value fallback is defensive only).
+    private var expandedValueText: String {
+        guard let value = rowModel.value else { return "—" }
+        guard let baseline = rowModel.baseline else { return formatted(value) }
+        return "\(formatted(value)) of \(formatted(baseline))"
+    }
+
+    private func formatted(_ value: Double) -> String {
         let number = String(format: "%.2f", value)
         guard spec.valueKind == .currency, let code = spec.currencyCode?.uppercased() else {
             return number
@@ -290,6 +355,32 @@ private struct ProviderRow: View {
         case "JPY", "CNY": return "¥" + number
         default: return code + " " + number
         }
+    }
+}
+
+/// A chisel at provider-row scale: round-capped handle on the upper-right
+/// diagonal, blade widening to its cutting edge at the lower-left. Bounding
+/// metrics match the Claude rows' SF icons — draw at 10×10 inside the shared
+/// 12pt-wide leading column so compact rows stay exactly aligned.
+struct ChiselIcon: Shape {
+    func path(in rect: CGRect) -> Path {
+        func pt(_ x: CGFloat, _ y: CGFloat) -> CGPoint {
+            CGPoint(x: rect.minX + x * rect.width, y: rect.minY + y * rect.height)
+        }
+        var path = Path()
+        // Blade: trapezoid along the diagonal, flaring to the flat edge.
+        path.move(to: pt(0.644, 0.484))
+        path.addLine(to: pt(0.232, 0.952))
+        path.addLine(to: pt(0.048, 0.768))
+        path.addLine(to: pt(0.516, 0.356))
+        path.closeSubpath()
+        // Handle: thick round-capped bar on the same diagonal.
+        let handle = Path { p in
+            p.move(to: pt(0.62, 0.38))
+            p.addLine(to: pt(0.84, 0.16))
+        }.strokedPath(StrokeStyle(lineWidth: 0.30 * min(rect.width, rect.height), lineCap: .round))
+        path.addPath(handle)
+        return path
     }
 }
 

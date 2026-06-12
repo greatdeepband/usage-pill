@@ -4,28 +4,35 @@ import UsageCore
 final class PillPanel: NSPanel {
     private static let originKey = "pillTopLeft"
 
-    // Row counts, set by AppDelegate via applyRowCounts(...).
+    // Row/section counts, set by AppDelegate via applyRowCounts(...).
     var pinnedClaudeRows = 2
     var pinnedProviderRows = 0
     var expandedClaudeRows = 2
     var expandedProviderRows = 0
+    /// Section headers per mode (Task 18a): the Claude section counts when
+    /// ≥1 of its rows is visible; each visible provider is its own section.
+    var compactSections = 1
+    var expandedSections = 1
     /// Set by AppDelegate when the identity toggle changes.
     var identityEnabled = false
 
     // Constants MEASURED via NSHostingView.fittingSize per row variant
-    // (Task 12 review): compact row 13pt + 6 spacing = 19/row over a 12pt
-    // base; expanded Claude row 22pt + 10 spacing = 32/row, provider row
-    // 13pt + 10 spacing = 23/row over a 38pt base (padding + footer); the
+    // (Task 12 review, re-measured for Task 18a sections): compact row
+    // 13pt + 6 spacing = 19/row over a 12pt base, compact section header
+    // 9pt + 6 spacing = 15 each; expanded Claude AND provider rows are both
+    // two-line now, 22pt + 10 spacing = 32/row over a 38pt base (padding +
+    // footer), expanded section header 10pt + 10 spacing = 20 each; the
     // identity strip costs 30 (20 content + 10 section spacing), NOT 18.
-    // Defaults reproduce the v1-verified frames exactly: compact 50, expanded 102.
+    // Defaults (2 Claude rows + 1 CLAUDE header): compact 65, expanded 122.
     private var compactSize: NSSize {
         let rows = max(pinnedClaudeRows, 0) + max(pinnedProviderRows, 0)
-        return NSSize(width: 250, height: max(30, 12 + CGFloat(rows * 19)))
+        let headers = max(compactSections, 0)
+        return NSSize(width: 250, height: max(30, 12 + CGFloat(rows * 19) + CGFloat(headers * 15)))
     }
 
     private var currentExpandedSize: NSSize {
-        let rows = max(expandedClaudeRows, 0) * 32 + max(expandedProviderRows, 0) * 23
-        var h = max(44, 38 + CGFloat(rows))
+        let rows = (max(expandedClaudeRows, 0) + max(expandedProviderRows, 0)) * 32
+        var h = max(44, 38 + CGFloat(rows) + CGFloat(max(expandedSections, 0) * 20))
         if identityEnabled { h += 30 }
         return NSSize(width: 250, height: h)
     }
@@ -40,9 +47,10 @@ final class PillPanel: NSPanel {
 
     init() {
         super.init(
-            // Matches compactSize for the default row counts (2 Claude rows,
-            // no providers); instance properties can't be used before super.init.
-            contentRect: NSRect(origin: .zero, size: NSSize(width: 250, height: 50)),
+            // Matches compactSize for the default counts (2 Claude rows under
+            // 1 section header, no providers); instance properties can't be
+            // used before super.init.
+            contentRect: NSRect(origin: .zero, size: NSSize(width: 250, height: 65)),
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false
@@ -104,11 +112,14 @@ final class PillPanel: NSPanel {
     /// expanded panel is left alone — the next hover-out collapses it to the
     /// fresh compact size via setExpanded.
     func applyRowCounts(pinnedClaude: Int, pinnedProviders: Int,
-                        expandedClaude: Int, expandedProviders: Int, identity: Bool) {
+                        expandedClaude: Int, expandedProviders: Int,
+                        compactSections: Int, expandedSections: Int, identity: Bool) {
         pinnedClaudeRows = pinnedClaude
         pinnedProviderRows = pinnedProviders
         expandedClaudeRows = expandedClaude
         expandedProviderRows = expandedProviders
+        self.compactSections = compactSections
+        self.expandedSections = expandedSections
         identityEnabled = identity
         guard !isExpandedNow else { return }
         let size = compactSize

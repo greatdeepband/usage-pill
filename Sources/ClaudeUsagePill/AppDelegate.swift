@@ -125,18 +125,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         )
     }
 
-    /// Recompute row counts for the panel's dynamic heights from the Claude
-    /// visibilities + provider specs.  Call after anything that changes which
-    /// rows are visible (theme settings, provider reload, identity state).
+    /// Recompute row/section counts for the panel's dynamic heights from the
+    /// Claude visibilities + provider specs.  Call after anything that changes
+    /// which rows are visible (theme settings, provider reload, identity state).
+    /// Sections (Task 18a): the Claude section header counts when ≥1 Claude
+    /// row is visible in that mode; each visible provider is its own section.
     private func syncPanelLayout() {
         let claudeVis = [themeStore.sessionVisibility, themeStore.weekVisibility]
         let rows = providersModel.rows
+        let pinnedClaude = claudeVis.filter { $0 == .pinned }.count
+        let pinnedProviders = rows.filter { $0.spec.visibility == .pinned }.count
+        let expandedClaude = claudeVis.filter { $0 != .hidden }.count
         panel.applyRowCounts(
-            pinnedClaude: claudeVis.filter { $0 == .pinned }.count,
-            pinnedProviders: rows.filter { $0.spec.visibility == .pinned }.count,
-            expandedClaude: claudeVis.filter { $0 != .hidden }.count,
+            pinnedClaude: pinnedClaude,
+            pinnedProviders: pinnedProviders,
+            expandedClaude: expandedClaude,
             expandedProviders: rows.count, // hidden specs never get a row
-            identity: themeStore.showIdentity
+            compactSections: (pinnedClaude > 0 ? 1 : 0) + pinnedProviders,
+            expandedSections: (expandedClaude > 0 ? 1 : 0) + rows.count,
+            // Identity lives INSIDE the Claude section now — both Claude rows
+            // hidden ⇒ no strip, so it must not add height either.
+            identity: expandedClaude > 0 && themeStore.showIdentity
                 && (identityModel.email != nil || identityModel.planBadge != nil)
         )
     }
