@@ -1,10 +1,16 @@
 # Changelog
 
-## v2.0.0 — in development
+## v1.0.0 — 2026-06-13
 
-Forked from claude-usage-pill v1.2.4 as a separate app (new bundle id
-pl.bbi.usage-pill). Multi-provider support arrives in this line; the v1.x
-entries below are preserved for provenance.
+First public release of Usage Pill — an always-on-top macOS widget showing
+all your AI usage meters in one pill: Claude plan windows (session + week)
+plus any number of API credit balances (DeepSeek preset included; add any
+GET-JSON provider via the guided custom flow — paste URL + key, tap the
+number you recognize). Per-provider colors, warn thresholds, drain bars
+with per-launch baselines, red alert at 90% weekly, native-feel settings.
+
+Usage Pill grew out of Claude Usage Pill; that project's full history is
+preserved in this repository (the entries below predate the rename).
 
 ## v1.2.4 — 2026-06-12
 
