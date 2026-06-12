@@ -51,6 +51,7 @@ struct AddProviderFlow: View {
     @State private var showAs: ProviderSpec.ValueKind = .currency
     @State private var warnText = ""
     @State private var saveErrorText: String?
+    @State private var advancedExpanded = false
     @State private var accent: ProviderAccent = .sage // default proposition
     @State private var color: Color
     /// Round-tripped initial color; if Add lands on .custom with this same
@@ -246,7 +247,23 @@ struct AddProviderFlow: View {
                     .frame(maxWidth: 220)
             }
             CardDivider()
-            DisclosureGroup("Advanced (auth header)") {
+            // Not DisclosureGroup: on macOS only its tiny triangle is
+            // clickable, which reads as a dead control. Whole row toggles.
+            Button {
+                withAnimation(.easeInOut(duration: 0.18)) { advancedExpanded.toggle() }
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 10, weight: .semibold))
+                        .rotationEffect(.degrees(advancedExpanded ? 90 : 0))
+                    Text("Advanced (auth header)")
+                    Spacer()
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .padding(.vertical, 7)
+            if advancedExpanded {
                 VStack(alignment: .leading, spacing: 8) {
                     labeledRow("Header Name") {
                         TextField("Header Name", text: $headerName)
@@ -262,9 +279,8 @@ struct AddProviderFlow: View {
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }
-                .padding(.top, 2)
+                .padding(.bottom, 7)
             }
-            .padding(.vertical, 7)
         }
         if let probeError {
             CardFooter(text: probeError, color: .red)
