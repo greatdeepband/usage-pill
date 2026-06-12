@@ -102,6 +102,84 @@ import Testing
     }
 }
 
+// MARK: - First-run import from the v1 app's defaults domain (plan Task 18)
+
+@Test func importCopiesLegacyThemeAndIdentity() {
+    TestDefaults.withFresh(prefix: "theme-tests-") { legacy in
+        TestDefaults.withFresh(prefix: "theme-tests-") { ours in
+            legacy.set("#11223344", forKey: ThemeSettings.sessionKey)
+            legacy.set("#55667788", forKey: ThemeSettings.weekKey)
+            legacy.set("custom", forKey: ThemeSettings.paletteKey)
+            legacy.set(true, forKey: ThemeSettings.identityKey)
+            ThemeSettings.importLegacyIfNeeded(from: legacy, into: ours)
+            let loaded = ThemeSettings(defaults: ours).load()
+            #expect(loaded.theme == Theme(sessionHex: "#11223344", weekHex: "#55667788"))
+            #expect(loaded.palette == .custom)
+            #expect(loaded.showIdentity == true)
+            #expect(ours.bool(forKey: ThemeSettings.didImportV1Key) == true)
+        }
+    }
+}
+
+@Test func importSecondCallIsNoOp() {
+    TestDefaults.withFresh(prefix: "theme-tests-") { legacy in
+        TestDefaults.withFresh(prefix: "theme-tests-") { ours in
+            legacy.set("#11223344", forKey: ThemeSettings.sessionKey)
+            legacy.set("#55667788", forKey: ThemeSettings.weekKey)
+            legacy.set("custom", forKey: ThemeSettings.paletteKey)
+            ThemeSettings.importLegacyIfNeeded(from: legacy, into: ours)
+            // User re-themes after the import; legacy changes too.
+            ThemeSettings(defaults: ours).save(
+                theme: Palette.sage.preset!, palette: .sage, showIdentity: false,
+                sessionVisibility: .pinned, weekVisibility: .pinned, redAlert90: true)
+            legacy.set("#AABBCCDD", forKey: ThemeSettings.sessionKey)
+            ThemeSettings.importLegacyIfNeeded(from: legacy, into: ours)
+            let loaded = ThemeSettings(defaults: ours).load()
+            #expect(loaded.theme == Palette.sage.preset!)
+            #expect(loaded.palette == .sage)
+        }
+    }
+}
+
+@Test func importAbsentLegacyDomainNoOpsButMarksDone() {
+    TestDefaults.withFresh(prefix: "theme-tests-") { ours in
+        ThemeSettings.importLegacyIfNeeded(from: nil, into: ours)
+        #expect(ours.bool(forKey: ThemeSettings.didImportV1Key) == true)
+        #expect(ours.string(forKey: ThemeSettings.sessionKey) == nil)
+        let loaded = ThemeSettings(defaults: ours).load()
+        #expect(loaded.theme == Palette.dusk.preset!) // untouched defaults
+    }
+}
+
+@Test func importEmptyLegacyDomainCopiesNothingButMarksDone() {
+    TestDefaults.withFresh(prefix: "theme-tests-") { legacy in
+        TestDefaults.withFresh(prefix: "theme-tests-") { ours in
+            ThemeSettings.importLegacyIfNeeded(from: legacy, into: ours)
+            #expect(ours.bool(forKey: ThemeSettings.didImportV1Key) == true)
+            #expect(ours.string(forKey: ThemeSettings.sessionKey) == nil)
+            #expect(ours.object(forKey: ThemeSettings.identityKey) == nil)
+        }
+    }
+}
+
+@Test func importSkipsWhenAlreadyMarkedDone() {
+    TestDefaults.withFresh(prefix: "theme-tests-") { legacy in
+        TestDefaults.withFresh(prefix: "theme-tests-") { ours in
+            ours.set(true, forKey: ThemeSettings.didImportV1Key)
+            ThemeSettings(defaults: ours).save(
+                theme: Palette.mist.preset!, palette: .mist, showIdentity: false,
+                sessionVisibility: .pinned, weekVisibility: .pinned, redAlert90: true)
+            legacy.set("#11223344", forKey: ThemeSettings.sessionKey)
+            legacy.set("#55667788", forKey: ThemeSettings.weekKey)
+            legacy.set("custom", forKey: ThemeSettings.paletteKey)
+            ThemeSettings.importLegacyIfNeeded(from: legacy, into: ours)
+            let loaded = ThemeSettings(defaults: ours).load()
+            #expect(loaded.theme == Palette.mist.preset!)
+            #expect(loaded.palette == .mist)
+        }
+    }
+}
+
 @Test func fallbackPreservesIdentityToggle() {
     TestDefaults.withFresh(prefix: "theme-tests-") { d in
         d.set("not-a-color", forKey: "theme.session")

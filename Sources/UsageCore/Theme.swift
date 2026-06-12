@@ -33,8 +33,35 @@ public struct ThemeSettings {
     public static let weekVisibilityKey = "claude.weekVisibility"
     public static let redAlertKey = "claude.redAlert90"
 
+    /// First-run import bookkeeping (plan Task 18): set in OUR domain once the
+    /// one-shot copy from the v1 app's domain has run (or been skipped).
+    public static let didImportV1Key = "didImportV1"
+    /// The frozen v1.x app's defaults domain (this project's pre-fork bundle id).
+    public static let legacyV1Domain = "pl.bbi.claude-usage-pill"
+
     private let defaults: UserDefaults
     public init(defaults: UserDefaults = .standard) { self.defaults = defaults }
+
+    /// One-shot, read-only import of the v1 app's appearance settings into our
+    /// domain on first launch. Copies theme.session / theme.week / theme.palette
+    /// / identity.show verbatim when present (load()'s corruption fallback still
+    /// guards garbage values). Marks `didImportV1` ALWAYS — even when `legacy`
+    /// is nil or empty — so the import can never fire twice and never overwrite
+    /// settings the user changed after first launch. The legacy domain is never
+    /// written to.
+    public static func importLegacyIfNeeded(from legacy: UserDefaults?, into defaults: UserDefaults) {
+        guard defaults.object(forKey: didImportV1Key) == nil else { return }
+        defer { defaults.set(true, forKey: didImportV1Key) }
+        guard let legacy else { return }
+        for key in [sessionKey, weekKey, paletteKey] {
+            if let value = legacy.string(forKey: key) {
+                defaults.set(value, forKey: key)
+            }
+        }
+        if let show = legacy.object(forKey: identityKey) as? Bool {
+            defaults.set(show, forKey: identityKey)
+        }
+    }
 
     public func load() -> (theme: Theme, palette: Palette, showIdentity: Bool,
                            sessionVisibility: ProviderSpec.Visibility,
