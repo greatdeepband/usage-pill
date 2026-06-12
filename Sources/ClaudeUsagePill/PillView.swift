@@ -51,6 +51,20 @@ struct PillView: View {
         providers.rows.filter { isVisible($0.spec.visibility) }
     }
 
+    /// Compact paddings are height-aware (the capsule's side radius grows
+    /// with the pill, so the content must move inward with it). Shared with
+    /// PillPanel via CompactGeometry — counts here MUST mirror
+    /// AppDelegate.syncPanelLayout's pinned-row/compact-section math.
+    private var compactMetrics: CompactGeometry.Metrics {
+        let claudeRows = [theme.sessionVisibility, theme.weekVisibility]
+            .filter { $0 == .pinned }.count
+        let providerRows = providers.rows.filter { $0.spec.visibility == .pinned }.count
+        return CompactGeometry.metrics(
+            rows: claudeRows + providerRows,
+            sections: (claudeRows > 0 ? 1 : 0) + providerRows
+        )
+    }
+
     @ViewBuilder private var content: some View {
         let shape: AnyShape = expanded ? AnyShape(RoundedRectangle(cornerRadius: 18)) : AnyShape(Capsule())
         let showSession = isVisible(theme.sessionVisibility)
@@ -108,8 +122,10 @@ struct PillView: View {
                 if expanded { footer }
             }
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, expanded ? 13 : 8)
+        // Expanded paddings are fixed (declared perfect); compact paddings
+        // scale with the pill's height so content clears the capsule corners.
+        .padding(.horizontal, expanded ? 16 : compactMetrics.hPad)
+        .padding(.vertical, expanded ? 13 : compactMetrics.vPad)
         .background {
             ZStack {
                 VisualEffectBlur() // glass: blurs what's behind the window

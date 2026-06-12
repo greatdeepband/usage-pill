@@ -17,17 +17,28 @@ final class PillPanel: NSPanel {
     var identityEnabled = false
 
     // Constants MEASURED via NSHostingView.fittingSize per row variant
-    // (Task 12 review, re-measured for Task 18a sections): compact row
-    // 13pt + 6 spacing = 19/row over a 12pt base, compact section header
-    // 9pt + 6 spacing = 15 each; expanded Claude AND provider rows are both
-    // two-line now, 22pt + 10 spacing = 32/row over a 38pt base (padding +
+    // (Task 12 review, re-measured for Task 18a sections, re-verified for the
+    // height-aware compact paddings): compact row 13pt + 6 spacing = 19/row
+    // over a 12pt base AT THE CLASSIC 8pt vertical padding, compact section
+    // header 9pt + 6 spacing = 15 each — that classic-padding estimate now
+    // lives in CompactGeometry, which swaps in the grown vPad (final height =
+    // estimate + 2·(vPad − 8)) and grows hPad/width so content clears the
+    // capsule corners. Expanded is UNCHANGED: Claude AND provider rows are
+    // both two-line, 22pt + 10 spacing = 32/row over a 38pt base (padding +
     // footer), expanded section header 10pt + 10 spacing = 20 each; the
     // identity strip costs 30 (20 content + 10 section spacing), NOT 18.
-    // Defaults (2 Claude rows + 1 CLAUDE header): compact 65, expanded 122.
+    // Re-measured fittingSize with the grown paddings runs ~2 pt UNDER the
+    // formula (66/107/148/189 vs 68/108.8/149.6/190.4 for 0–3 providers) with
+    // exact per-row deltas — the slack sits below the top-aligned capsule, so
+    // the conservative direction is harmless and the constants are kept.
+    // Defaults (2 Claude rows + 1 CLAUDE header): compact 260.5×68 (hPad
+    // 21.25, vPad 9.5), expanded 250×122.
     private var compactSize: NSSize {
-        let rows = max(pinnedClaudeRows, 0) + max(pinnedProviderRows, 0)
-        let headers = max(compactSections, 0)
-        return NSSize(width: 250, height: max(30, 12 + CGFloat(rows * 19) + CGFloat(headers * 15)))
+        let m = CompactGeometry.metrics(
+            rows: max(pinnedClaudeRows, 0) + max(pinnedProviderRows, 0),
+            sections: max(compactSections, 0)
+        )
+        return NSSize(width: m.width, height: m.height)
     }
 
     private var currentExpandedSize: NSSize {
@@ -46,11 +57,15 @@ final class PillPanel: NSPanel {
     private var suppressSave = false
 
     init() {
+        // Matches compactSize for the default counts (2 Claude rows under
+        // 1 section header, no providers); instance properties can't be
+        // used before super.init, but the static CompactGeometry can.
+        let defaultMetrics = CompactGeometry.metrics(rows: 2, sections: 1)
         super.init(
-            // Matches compactSize for the default counts (2 Claude rows under
-            // 1 section header, no providers); instance properties can't be
-            // used before super.init.
-            contentRect: NSRect(origin: .zero, size: NSSize(width: 250, height: 65)),
+            contentRect: NSRect(
+                origin: .zero,
+                size: NSSize(width: defaultMetrics.width, height: defaultMetrics.height)
+            ),
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false
