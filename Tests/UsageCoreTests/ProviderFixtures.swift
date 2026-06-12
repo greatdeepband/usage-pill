@@ -7,6 +7,11 @@ enum ProviderFixtures {
     {"is_available":true,"balance_infos":[{"currency":"USD","total_balance":"110.53","granted_balance":"0.00","topped_up_balance":"110.53"}]}
     """#
 
+    /// Shape per OpenRouter docs (total credits purchased / total used).
+    static let openRouterCredits = #"""
+    {"data":{"total_credits":50.0,"total_usage":41.25}}
+    """#
+
     // Probe outcomes 2026-06-12 (plan Task 1):
     //   DeepSeek        — SHIP (verified above)
     //   OpenRouter      — DEFER (no key offered; README recipe + custom flow)

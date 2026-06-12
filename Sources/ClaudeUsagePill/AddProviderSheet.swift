@@ -21,7 +21,7 @@ struct AddProviderFlow: View {
     /// ⑥ pickField → ⑦ finish.
     private enum Step {
         case pickSource
-        case presetForm(ProviderPresets.Preset)
+        case presetForm(ProviderTemplate)
         case customForm
         case probing
         case pickField([DiscoveredField])
@@ -152,18 +152,23 @@ struct AddProviderFlow: View {
     @ViewBuilder
     private var sourcePicker: some View {
         SettingsCard {
-            ForEach(ProviderPresets.all, id: \.name) { preset in
+            // Shim: show only full-template entries for now (Task 4 replaces
+            // this picker wholesale with the grouped catalog UI).
+            ForEach(TemplateCatalog.all.filter { if case .full = $0.kind { true } else { false } },
+                    id: \.name) { template in
                 sourceRow(
-                    title: preset.name,
-                    subtitle: "verified preset — just needs your key"
+                    title: template.name,
+                    subtitle: template.subtitle
                 ) {
-                    if pickedPresetName != preset.name {
-                        // Fresh preset: prefill from the template.
-                        pickedPresetName = preset.name
-                        presetName = preset.make().displayName
+                    if pickedPresetName != template.name {
+                        // Fresh template: prefill display name from spec.
+                        pickedPresetName = template.name
+                        if case .full(let make) = template.kind {
+                            presetName = make().displayName
+                        }
                         presetKey = ""
                     }
-                    step = .presetForm(preset)
+                    step = .presetForm(template)
                 }
                 CardDivider()
             }
@@ -200,7 +205,7 @@ struct AddProviderFlow: View {
     // MARK: ④b preset form
 
     @ViewBuilder
-    private func presetForm(_ preset: ProviderPresets.Preset) -> some View {
+    private func presetForm(_ preset: ProviderTemplate) -> some View {
         CardHeader(preset.name)
         SettingsCard {
             labeledRow("Name") {
@@ -222,8 +227,9 @@ struct AddProviderFlow: View {
         }
     }
 
-    private func addPreset(_ preset: ProviderPresets.Preset) {
-        var spec = preset.make()
+    private func addPreset(_ preset: ProviderTemplate) {
+        guard case .full(let make) = preset.kind else { return }
+        var spec = make()
         let name = trimmed(presetName)
         if !name.isEmpty { spec.displayName = name }
         finishAdd(spec: spec, key: presetKey)
