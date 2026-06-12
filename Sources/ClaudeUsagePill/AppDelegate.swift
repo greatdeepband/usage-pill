@@ -23,9 +23,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         model = UsageModel(fetch: { try await fetcher.fetch() })
 
         let keyStore = ProviderKeyStore()
+        let specStore = ProviderSpecStore()
         let engine = ProviderEngine()
         providersModel = ProvidersModel(
-            specStore: ProviderSpecStore(),
+            specStore: specStore,
             keyLookup: { keyStore.loadKey(for: $0) },
             makeFetch: { spec, key in { try await engine.fetchValue(spec: spec, key: key) } }
         )
@@ -33,7 +34,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         themeStore = ThemeStore()
         let profileFetcher = ProfileFetcher(cache: cache)
         identityModel = IdentityModel(cache: cache, fetchProfile: { try await profileFetcher.fetch() })
-        settingsController = SettingsWindowController(store: themeStore)
+        settingsController = SettingsWindowController(
+            themeStore: themeStore,
+            providersModel: providersModel,
+            specStore: specStore,
+            keyStore: keyStore
+        )
 
         panel = PillPanel()
         panel.contentView = NSHostingView(
