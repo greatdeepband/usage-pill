@@ -36,10 +36,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let keyStore = ProviderKeyStore()
         let specStore = ProviderSpecStore()
         let engine = ProviderEngine()
+        let spendAdapter = OpenAISpendAdapter()
         providersModel = ProvidersModel(
             specStore: specStore,
             keyLookup: { keyStore.loadKey(for: $0) },
-            makeFetch: { spec, key in { try await engine.fetchValue(spec: spec, key: key) } }
+            makeFetch: { spec, key in
+                // Native adapters route here; everything else through the engine.
+                // (ProviderEngine itself refuses non-generic specs — defense in depth.)
+                switch spec.adapter {
+                case .openAISpend: return { try await spendAdapter.fetchValue(spec: spec, key: key) }
+                default: return { try await engine.fetchValue(spec: spec, key: key) }
+                }
+            }
         )
 
         // One-shot import of the v1 app's appearance settings, BEFORE the
