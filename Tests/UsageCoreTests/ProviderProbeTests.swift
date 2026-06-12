@@ -143,4 +143,13 @@ struct ProviderProbeTests {
             _ = try await probe.discover(url: "https://api.example.com/balance", key: "k1")
         }
     }
+    // Keys containing dots (or empty keys) are unfetchable via DotPath — the
+    // probe must not offer them.
+    @Test func dottedAndEmptyKeysAreSkipped() {
+        let obj: [String: Any] = ["a.b": 1.0, "": 2.0, "ok": 3.0]
+        var fields: [DiscoveredField] = []
+        ProviderProbe.flatten(obj, path: "", depth: 0, into: &fields)
+        #expect(fields == [DiscoveredField(path: "ok", value: 3.0)])
+    }
+
 }

@@ -1,4 +1,5 @@
 import Foundation
+import os
 
 public struct ProviderSpec: Codable, Equatable, Sendable, Identifiable {
     public enum ValueKind: String, Codable, Sendable { case currency, number }
@@ -44,9 +45,20 @@ public struct ProviderSpecStore {
         guard let blob = defaults.data(forKey: Self.key),
               let raw = (try? JSONSerialization.jsonObject(with: blob)) as? [Any] else { return [] }
         let decoder = JSONDecoder()
+        var dropped = 0
+        defer {
+            if dropped > 0 {
+                Logger(subsystem: "pl.bbi.usage-pill", category: "specs")
+                    .warning("dropped \(dropped) corrupt provider spec entries")
+            }
+        }
         return raw.compactMap { element in
-            guard let data = try? JSONSerialization.data(withJSONObject: element) else { return nil }
-            return try? decoder.decode(ProviderSpec.self, from: data)
+            guard let data = try? JSONSerialization.data(withJSONObject: element),
+                  let spec = try? decoder.decode(ProviderSpec.self, from: data) else {
+                dropped += 1
+                return nil
+            }
+            return spec
         }
     }
 

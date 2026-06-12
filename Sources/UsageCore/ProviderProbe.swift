@@ -23,8 +23,7 @@ public struct ProviderProbe {
     public func discover(url: String, key: String,
                          headerName: String = "Authorization",
                          headerTemplate: String = "Bearer {key}") async throws -> [DiscoveredField] {
-        guard let u = URL(string: url), let scheme = u.scheme,
-              scheme == "https" || scheme == "http" else {
+        guard let u = URL(string: url), u.scheme == "https" else { // https ONLY: the header carries the user's API key
             throw FetchError.network
         }
         var req = URLRequest(url: u)
@@ -41,6 +40,8 @@ public struct ProviderProbe {
             throw FetchError.network
         }
         guard let http = response as? HTTPURLResponse else { throw FetchError.network }
+        // Probe is a one-shot UI flow: a bare rateLimited(nil) is fine here
+        // (no Retry-After enrichment needed — nothing schedules probe retries).
         if let err = UsageRequestBuilder.mapStatus(http.statusCode) { throw err }
         guard let json = try? JSONSerialization.jsonObject(with: data) else {
             throw FetchError.undecodable
@@ -55,7 +56,9 @@ public struct ProviderProbe {
     static func flatten(_ node: Any, path: String, depth: Int, into out: inout [DiscoveredField]) {
         guard depth <= 6, out.count < 50 else { return }
         if let dict = node as? [String: Any] {
-            for (k, v) in dict.sorted(by: { $0.key < $1.key }) {
+            // Keys containing '.' (or empty keys) would produce paths the
+            // engine's DotPath can never resolve — don't offer them.
+            for (k, v) in dict.sorted(by: { $0.key < $1.key }) where !k.isEmpty && !k.contains(".") {
                 flatten(v, path: path.isEmpty ? k : "\(path).\(k)", depth: depth + 1, into: &out)
             }
         } else if let arr = node as? [Any] {

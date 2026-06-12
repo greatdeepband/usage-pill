@@ -228,4 +228,25 @@ struct ProviderEngineTests {
         let value = try await ProviderEngine(session: makeEngineSession()).fetchValue(spec: spec, key: "k1")
         #expect(value == 12) // (10 − 4) × 2 — a swapped order would yield 16
     }
+    // https-only: an http:// URL must be rejected BEFORE any request.
+    @Test func httpSchemeIsRejectedWithoutRequest() async throws {
+        EngineStubProtocol.requestCount = 0
+        let spec = makeSpec(url: "http://api.example.com/balance")
+        await #expect(throws: FetchError.network) {
+            _ = try await ProviderEngine(session: makeEngineSession()).fetchValue(spec: spec, key: "k1")
+        }
+        #expect(EngineStubProtocol.requestCount == 0)
+    }
+
+    // Native-adapter specs must never execute as generic GETs.
+    @Test func nonGenericAdapterIsRefused() async throws {
+        EngineStubProtocol.requestCount = 0
+        var spec = makeSpec()
+        spec.adapter = .openAISpend
+        await #expect(throws: FetchError.undecodable) {
+            _ = try await ProviderEngine(session: makeEngineSession()).fetchValue(spec: spec, key: "k1")
+        }
+        #expect(EngineStubProtocol.requestCount == 0)
+    }
+
 }

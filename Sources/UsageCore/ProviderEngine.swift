@@ -17,8 +17,9 @@ public struct ProviderEngine: ProviderFetching {
     public init(session: URLSession? = nil) { self.session = session ?? Self.nonPersistingSession }
 
     public func fetchValue(spec: ProviderSpec, key: String) async throws -> Double {
-        guard let url = URL(string: spec.url), let scheme = url.scheme,
-              scheme == "https" || scheme == "http" else {
+        // Native-adapter specs must never reach the generic engine.
+        guard spec.adapter == .generic else { throw FetchError.undecodable }
+        guard let url = URL(string: spec.url), url.scheme == "https" else { // https ONLY: the header carries the user's API key
             throw FetchError.network
         }
         var req = URLRequest(url: url)
