@@ -3,8 +3,12 @@ import Security
 
 /// App-OWNED keychain items for user-pasted provider keys. This app creates
 /// these items, so reads are always silent — no ACL prompts, no interplay
-/// with the signing identity. Entirely unrelated to the READ-ONLY Claude
-/// Code credential access. Keys are never logged anywhere.
+/// with the signing identity — for items created by the SAME signing identity.
+/// Dev-workflow caveat: an unsigned (debug) binary and the signed .app use
+/// different identities and do NOT share items silently; this is expected and
+/// only affects local development, not production users.
+/// Entirely unrelated to the READ-ONLY Claude Code credential access.
+/// Keys are never logged anywhere.
 public struct ProviderKeyStore: Sendable {
     public static let defaultService = "pl.bbi.usage-pill.providers"
     private let service: String

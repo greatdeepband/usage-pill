@@ -30,4 +30,22 @@ enum TestDefaults {
         }
         return try body(defaults)
     }
+
+    /// Async variant — same lifecycle, supports `await` inside the body.
+    /// Runs on the main actor so @MainActor-isolated test functions can pass
+    /// their closures without a Sendable crossing.
+    @MainActor
+    static func withFresh<T>(prefix: String = "usage-pill-tests-", _ body: (UserDefaults) async throws -> T) async rethrows -> T {
+        _ = sweepOnce
+        let name = prefix + UUID().uuidString
+        let defaults = UserDefaults(suiteName: name)!
+        defer {
+            defaults.removePersistentDomain(forName: name)
+            CFPreferencesAppSynchronize(name as CFString)
+            let plist = FileManager.default.homeDirectoryForCurrentUser
+                .appending(components: "Library", "Preferences", "\(name).plist")
+            try? FileManager.default.removeItem(at: plist)
+        }
+        return try await body(defaults)
+    }
 }

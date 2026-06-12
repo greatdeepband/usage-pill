@@ -60,10 +60,24 @@ struct PillView: View {
             if expanded && theme.showIdentity && (identity.email != nil || identity.planBadge != nil) {
                 identityStrip
             }
-            if !showSession && !showWeek && providerRows.isEmpty {
+            // True empty: no rows at all in either mode → prompt user to open Settings.
+            // Compact with no pinned rows but expanded has content → quiet ellipsis
+            // (hovering reveals the rows); avoids a misleading prompt when the pill
+            // is intentionally configured with expanded-only rows.
+            // Expanded empty state is unchanged: "open Settings" still shown.
+            let noClaudeEver = theme.sessionVisibility == .hidden && theme.weekVisibility == .hidden
+            let allRowsEmpty = providers.rows.isEmpty && noClaudeEver
+            let compactNothingPinned = !expanded && !showSession && !showWeek && providerRows.isEmpty
+            if allRowsEmpty {
                 Text("open Settings")
                     .font(.system(size: 9.5))
                     .foregroundStyle(.white.opacity(0.5))
+                    .frame(maxWidth: .infinity, alignment: .center)
+            } else if compactNothingPinned {
+                // Content exists but is only visible when expanded — quiet hint.
+                Text("…")
+                    .font(.system(size: 9.5))
+                    .foregroundStyle(.white.opacity(0.35))
                     .frame(maxWidth: .infinity, alignment: .center)
             } else {
                 if showSession {
@@ -181,8 +195,13 @@ struct PillView: View {
     }
 
     /// Seconds since the OLDEST success across the Claude model (when any
-    /// Claude row is visible) and all visible provider rows. nil if any
-    /// visible row never succeeded — keeps the "no data yet" semantics.
+    /// Claude row is visible) and all visible provider rows. nil if NO
+    /// considered row has ever succeeded — keeps the "no data yet" semantics.
+    ///
+    /// Keyless rows (.stale(.auth) with no lastSuccess) are excluded from
+    /// consideration: before Milestone C they have no key and will never
+    /// succeed, so including them would pin "no data yet" in the footer
+    /// forever even when Claude data is fresh.
     private var oldestSuccessSeconds: TimeInterval? {
         var dates: [Date] = []
         if isVisible(theme.sessionVisibility) || isVisible(theme.weekVisibility) {
@@ -190,8 +209,16 @@ struct PillView: View {
             dates.append(d)
         }
         for row in visibleProviderRows {
-            guard let d = row.model.lastSuccess else { return nil }
-            dates.append(d)
+            if let d = row.model.lastSuccess {
+                dates.append(d)
+            } else if case .stale(let f) = row.model.status, f == .auth {
+                // Keyless row: never succeeded and has no key — skip it so it
+                // doesn't permanently suppress "updated X ago" for other rows.
+                continue
+            } else {
+                // A row with a key that hasn't returned yet: treat as no data.
+                return nil
+            }
         }
         guard let oldest = dates.min() else { return nil }
         return now.timeIntervalSince(oldest)

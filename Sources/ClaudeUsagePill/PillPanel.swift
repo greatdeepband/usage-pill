@@ -152,9 +152,14 @@ final class PillPanel: NSPanel {
             let main = screens.first ?? CGRect(x: 0, y: 0, width: 1440, height: 900)
             return CGPoint(x: main.maxX - size.width - 16, y: main.maxY - 16)
         }()
+        // Clamp the top-left using compactSize (position policy: saved position is
+        // always stored/clamped relative to the compact footprint so the pill never
+        // falls off-screen when collapsed). Translate the clamped top-left to a
+        // frame origin using the CURRENT frame height so that a screen-change while
+        // the panel is expanded keeps the top edge where it should be.
         let clamped = clampTopLeft(saved ?? fallback, pillSize: size, screens: screens)
         suppressSave = true
         defer { suppressSave = false }
-        setFrameOrigin(CGPoint(x: clamped.x, y: clamped.y - size.height))
+        setFrameOrigin(CGPoint(x: clamped.x, y: clamped.y - frame.height))
     }
 }
