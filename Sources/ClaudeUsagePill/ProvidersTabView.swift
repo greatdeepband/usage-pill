@@ -220,7 +220,7 @@ struct ProvidersTabView: View {
         providersModel.reload()
         // Changed specs got fresh row models showing "—"; fetch them now
         // rather than waiting for the 5-minute tick. Unchanged rows keep
-        // their backoff state, so this never hammers anyone.
+        // their backoff state, so rows in backoff stay throttled; healthy rows refetch once per user action.
         Task { await providersModel.refreshAll() }
     }
 
@@ -408,10 +408,11 @@ struct ProviderDetailSheet: View {
         let trimmedName = name.trimmingCharacters(in: .whitespaces)
         if !trimmedName.isEmpty { updated.displayName = trimmedName }
         // Empty or unparseable → nil (warning off). Accept a comma decimal.
+        // Negative thresholds can never fire — treat them as off too.
         updated.warnBelow = Double(
             warnText.trimmingCharacters(in: .whitespaces)
                 .replacingOccurrences(of: ",", with: ".")
-        )
+        ).flatMap { $0 > 0 ? $0 : nil }
         updated.visibility = visibility
         if let hex = color.themeHex, hex != initialHex {
             updated.accentHex = hex

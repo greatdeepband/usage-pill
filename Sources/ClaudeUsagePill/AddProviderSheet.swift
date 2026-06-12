@@ -246,6 +246,9 @@ struct AddProviderSheet: View {
     }
 
     private func startProbe() {
+        // Re-entry guard: a fast double-Continue must not spawn two probes.
+        probeTask?.cancel()
+        guard case .customForm = step else { return }
         probeError = nil
         step = .probing
         // Snapshot effective values; blank advanced fields fall back to the
@@ -399,7 +402,7 @@ struct AddProviderSheet: View {
             // Empty or unparseable → nil (warning off). Accept a comma decimal.
             warnBelow: Double(
                 trimmed(warnText).replacingOccurrences(of: ",", with: ".")
-            ),
+            ).flatMap { $0 > 0 ? $0 : nil },
             visibility: .pinned,
             accentHex: accentHex
         )
