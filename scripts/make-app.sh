@@ -4,9 +4,10 @@ cd "$(dirname "$0")/.."
 swift build -c release
 APP="build/Claude Usage Pill.app"
 rm -rf "$APP"
-mkdir -p "$APP/Contents/MacOS"
+mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp .build/release/ClaudeUsagePill "$APP/Contents/MacOS/"
 cp scripts/Info.plist "$APP/Contents/"
+cp scripts/AppIcon.icns "$APP/Contents/Resources/"
 # Prefer the stable local identity (scripts/make-signing-cert.sh) so the
 # keychain "Always Allow" decision survives rebuilds; fall back to ad-hoc.
 IDENTITY="Claude Usage Pill Dev"

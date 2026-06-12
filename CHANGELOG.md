@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.2.4 — 2026-06-12
+
+- **App icon.** The widget now wears its own blue-pill icon in Finder,
+  Launchpad, Spotlight, login items, and permission dialogs — no more
+  generic placeholder.
+
 ## v1.2.3 — 2026-06-12
 
 - **Self-healing credential cache.** The in-memory token previously refreshed
