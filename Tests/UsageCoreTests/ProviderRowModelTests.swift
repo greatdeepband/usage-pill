@@ -231,6 +231,64 @@ private func makeRowModelCounted(
     #expect(model.status == .ok)
 }
 
+// MARK: - Drain-bar baseline (Task 18a)
+
+@Test @MainActor func firstSuccessSetsBaselineAndFullFraction() async {
+    let t0 = Date(timeIntervalSince1970: 0)
+    let model = makeRowModel(results: [.success(50.0)], now: { t0 })
+    #expect(model.baseline == nil)
+    #expect(model.fraction == nil)
+    await model.refresh()
+    #expect(model.baseline == 50.0)
+    #expect(model.fraction == 1.0)
+}
+
+@Test @MainActor func drainLowersFraction() async throws {
+    let t0 = Date(timeIntervalSince1970: 0)
+    let model = makeRowModel(
+        results: [.success(50.0), .success(44.70)], now: { t0 }
+    )
+    await model.refresh()
+    await model.refresh()
+    #expect(model.baseline == 50.0)
+    #expect(model.value == 44.70)
+    let f = try #require(model.fraction)
+    #expect(abs(f - 0.894) < 0.0001)
+}
+
+@Test @MainActor func topUpRaisesBaselineToNewFull() async {
+    let t0 = Date(timeIntervalSince1970: 0)
+    let model = makeRowModel(
+        results: [.success(50.0), .success(44.70), .success(60.0)], now: { t0 }
+    )
+    await model.refresh()
+    await model.refresh()
+    await model.refresh()
+    #expect(model.baseline == 60.0)
+    #expect(model.fraction == 1.0)
+}
+
+@Test @MainActor func zeroBaselineYieldsNilFraction() async {
+    let t0 = Date(timeIntervalSince1970: 0)
+    let model = makeRowModel(results: [.success(0.0)], now: { t0 })
+    await model.refresh()
+    #expect(model.baseline == 0.0)
+    #expect(model.fraction == nil)
+}
+
+@Test @MainActor func failureKeepsBaseline() async throws {
+    let t0 = Date(timeIntervalSince1970: 0)
+    let model = makeRowModel(
+        results: [.success(50.0), .failure(FetchError.network)], now: { t0 }
+    )
+    await model.refresh()
+    await model.refresh()
+    #expect(model.status == .stale(.network))
+    #expect(model.baseline == 50.0)
+    let f = try #require(model.fraction)
+    #expect(f == 1.0)
+}
+
 @Test @MainActor func prSuccessClearsBackoff() async {
     let clock = PRClockBox(Date(timeIntervalSince1970: 0))
     let (model, callCount) = makeRowModelCounted(

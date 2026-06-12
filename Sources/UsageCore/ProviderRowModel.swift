@@ -18,6 +18,18 @@ public final class ProviderRowModel: ObservableObject {
     @Published public private(set) var lastSuccess: Date?
     @Published public private(set) var status: Status = .loading
 
+    /// Per-LAUNCH high-water mark for the drain bar (Task 18a). Deliberately
+    /// NOT persisted: relaunch = bar reads full again. Raised whenever a fresh
+    /// value exceeds it (top-up ⇒ new "full"); failures leave it untouched.
+    @Published public private(set) var baseline: Double?
+
+    /// value / baseline, clamped 0…1. nil when either side is missing or the
+    /// baseline is non-positive (a zero balance can't define "full").
+    public var fraction: Double? {
+        guard let value, let baseline, baseline > 0 else { return nil }
+        return min(max(value / baseline, 0), 1)
+    }
+
     private let fetch: @MainActor () async throws -> Double
     private let now: @Sendable () -> Date
     private var inFlight = false
@@ -37,7 +49,11 @@ public final class ProviderRowModel: ObservableObject {
         inFlight = true
         defer { inFlight = false }
         do {
-            value = try await fetch()
+            let newValue = try await fetch()
+            value = newValue
+            if baseline == nil || newValue > baseline! {
+                baseline = newValue
+            }
             lastSuccess = now()
             status = .ok
             backoffUntil = nil
