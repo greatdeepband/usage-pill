@@ -364,7 +364,7 @@ private struct ProviderRow: View {
         return formatted(value)
     }
 
-    /// "$44.70 of $50.00" — always shows the baseline once one exists (it is
+    /// "$37.25 of $50.00" — always shows the baseline once one exists (it is
     /// set on every success, so the plain-value fallback is defensive only).
     private var expandedValueText: String {
         guard let value = rowModel.value else { return "—" }

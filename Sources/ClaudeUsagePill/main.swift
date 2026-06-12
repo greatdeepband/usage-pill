@@ -9,7 +9,9 @@ let current = NSRunningApplication.current
 let copies = NSRunningApplication.runningApplications(
     withBundleIdentifier: Bundle.main.bundleIdentifier ?? "pl.bbi.usage-pill"
 )
-let myLaunch = current.launchDate ?? .distantPast
+// nil launchDate (direct-exec'd binary, e.g. from the build dir) must
+// DEFER to any real copy — treat self as newest, not oldest.
+let myLaunch = current.launchDate ?? .distantFuture
 if copies.contains(where: { other in
     guard other.processIdentifier != current.processIdentifier else { return false }
     let otherLaunch = other.launchDate ?? .distantPast

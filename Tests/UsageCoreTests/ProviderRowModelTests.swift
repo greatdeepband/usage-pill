@@ -246,20 +246,20 @@ private func makeRowModelCounted(
 @Test @MainActor func drainLowersFraction() async throws {
     let t0 = Date(timeIntervalSince1970: 0)
     let model = makeRowModel(
-        results: [.success(50.0), .success(44.70)], now: { t0 }
+        results: [.success(50.0), .success(37.25)], now: { t0 }
     )
     await model.refresh()
     await model.refresh()
     #expect(model.baseline == 50.0)
-    #expect(model.value == 44.70)
+    #expect(model.value == 37.25)
     let f = try #require(model.fraction)
-    #expect(abs(f - 0.894) < 0.0001)
+    #expect(abs(f - 0.745) < 0.0001) // 37.25 / 50
 }
 
 @Test @MainActor func topUpRaisesBaselineToNewFull() async {
     let t0 = Date(timeIntervalSince1970: 0)
     let model = makeRowModel(
-        results: [.success(50.0), .success(44.70), .success(60.0)], now: { t0 }
+        results: [.success(50.0), .success(37.25), .success(60.0)], now: { t0 }
     )
     await model.refresh()
     await model.refresh()

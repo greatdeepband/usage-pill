@@ -214,6 +214,11 @@ struct AddProviderFlow: View {
                     .frame(maxWidth: 200)
             }
         }
+        // Keychain write failures must be visible here too, not only in
+        // the custom flow (1.0 final review, finding 1).
+        if let saveErrorText {
+            CardFooter(text: saveErrorText, color: .red)
+        }
     }
 
     private func addPreset(_ preset: ProviderPresets.Preset) {
