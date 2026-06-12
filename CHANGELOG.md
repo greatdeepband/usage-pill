@@ -1,5 +1,16 @@
 # Changelog
 
+## v1.2.3 — 2026-06-12
+
+- **Self-healing credential cache.** The in-memory token previously refreshed
+  only after a 401 — but a long-stale token can draw 429s instead (observed:
+  the app sat unauthorized for 2 hours, then the server began throttling that
+  token, and the reload path never fired again until a manual restart). The
+  cache now silently re-reads the keychain every 30 minutes regardless of
+  error pattern, and within 1 minute whenever its cached token is past its
+  own expiry stamp — so the widget always converges on Claude Code's current
+  token without prompts or restarts.
+
 ## v1.2.2 — 2026-06-11
 
 - **Calmer polling.** The usage endpoint turned out to tolerate roughly one

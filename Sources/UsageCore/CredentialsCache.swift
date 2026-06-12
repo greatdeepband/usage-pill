@@ -16,30 +16,60 @@ public actor CredentialsCache {
     private let load: @Sendable () throws -> OAuthCredentials
     private let now: @Sendable () -> Date
     private let reloadThrottle: TimeInterval
+    private let cacheTTL: TimeInterval
+    /// Minimum spacing between re-reads triggered by a past-expiry cached token.
+    private let expiredRecheckFloor: TimeInterval = 60
     private var cached: OAuthCredentials?
+    private var loadedAt: Date?
     private var lastFailedLoad: (at: Date, error: Error)?  // negative cache
     private var lastForcedReload: Date?
 
     public init(
         load: @escaping @Sendable () throws -> OAuthCredentials,
         reloadThrottle: TimeInterval = 600,
+        cacheTTL: TimeInterval = 1800,
         now: @escaping @Sendable () -> Date = { Date() }
     ) {
         self.load = load
         self.reloadThrottle = reloadThrottle
+        self.cacheTTL = cacheTTL
         self.now = now
     }
 
     /// Returns cached credentials, loading from the underlying provider only
-    /// when nothing is cached yet.
+    /// when nothing is cached yet — or silently REFRESHING the cache when it
+    /// has outlived `cacheTTL`, or within `expiredRecheckFloor` when the
+    /// cached token is past its own expiry stamp.
+    ///
+    /// The TTL exists because a 401 is not the only way a stale token fails:
+    /// the server can answer a long-stale token with 429 (observed in the
+    /// field), and the 401-triggered reload path never fires. The TTL bounds
+    /// how long the cache can diverge from the keychain regardless of which
+    /// status codes come back. A failed refresh keeps serving the cached
+    /// token — degrading to the last-known credential, never erroring.
     ///
     /// If the most recent load attempt failed within the throttle window,
     /// the cached error is rethrown immediately — no second call to the
     /// loader, no second keychain prompt.
     public func credentials() throws -> OAuthCredentials {
-        if let cached { return cached }
+        if let current = cached {
+            let age = loadedAt.map { now().timeIntervalSince($0) } ?? .infinity
+            let pastExpiry = current.expiresAt.map { $0 <= now() } ?? false
+            let refreshDue = age >= cacheTTL || (pastExpiry && age >= expiredRecheckFloor)
+            guard refreshDue else { return current }
+            if let fresh = try? load() {
+                cached = fresh
+                loadedAt = now()
+                lastFailedLoad = nil
+                return fresh
+            }
+            // Refresh failed (e.g. transient keychain hiccup): keep serving
+            // the cached token; the next due window will try again.
+            loadedAt = now() // don't retry the loader on every poll
+            return current
+        }
         // Negative cache: a failed load (e.g. denied keychain prompt) is not
-        // retried within the throttle window — this is what stops a 60s poll
+        // retried within the throttle window — this is what stops a poll loop
         // from re-prompting every cycle.
         if let failure = lastFailedLoad,
            now().timeIntervalSince(failure.at) < reloadThrottle {
@@ -48,6 +78,7 @@ public actor CredentialsCache {
         do {
             let fresh = try load()
             cached = fresh
+            loadedAt = now()
             lastFailedLoad = nil
             return fresh
         } catch {
@@ -82,6 +113,7 @@ public actor CredentialsCache {
         do {
             let fresh = try load()
             cached = fresh
+            loadedAt = now()
             lastFailedLoad = nil
             return fresh.accessToken == old ? nil : fresh
         } catch {

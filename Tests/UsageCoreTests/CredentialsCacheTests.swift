@@ -216,3 +216,84 @@ private func makeToken(_ id: String) -> OAuthCredentials {
         #expect(callCount == 2)  // loader count pinned — no re-prompt
     }
 }
+
+// MARK: - v1.2.3: cache TTL + expiry-aware refresh (the 429-masks-401 trap)
+
+@Test func pastExpiryCachedTokenIsRefreshedFromLoader() async throws {
+    let clock = CacheClockBox(Date(timeIntervalSince1970: 0))
+    let counter = CacheCallCounter()
+    let stale = OAuthCredentials(
+        accessToken: "tokenStale",
+        expiresAt: Date(timeIntervalSince1970: 10) // expires almost immediately
+    )
+    let fresh = OAuthCredentials(accessToken: "tokenFresh", expiresAt: nil)
+    let cache = CredentialsCache(
+        load: {
+            counter.increment()
+            return counter.count == 1 ? stale : fresh
+        },
+        now: { clock.now }
+    )
+    #expect(try await cache.credentials().accessToken == "tokenStale")
+    // Past expiry but inside the 60s recheck floor → still cached, loader untouched.
+    clock.now = Date(timeIntervalSince1970: 30)
+    #expect(try await cache.credentials().accessToken == "tokenStale")
+    #expect(counter.count == 1)
+    // Past expiry AND past the floor → silently re-read; new token served.
+    clock.now = Date(timeIntervalSince1970: 61)
+    #expect(try await cache.credentials().accessToken == "tokenFresh")
+    #expect(counter.count == 2)
+}
+
+@Test func cacheTTLRefreshesEvenAValidToken() async throws {
+    let clock = CacheClockBox(Date(timeIntervalSince1970: 0))
+    let counter = CacheCallCounter()
+    let a = OAuthCredentials(accessToken: "tokenA", expiresAt: Date(timeIntervalSince1970: 1_000_000))
+    let b = OAuthCredentials(accessToken: "tokenB", expiresAt: Date(timeIntervalSince1970: 1_000_000))
+    let cache = CredentialsCache(
+        load: {
+            counter.increment()
+            return counter.count == 1 ? a : b
+        },
+        now: { clock.now }
+    )
+    _ = try await cache.credentials()
+    clock.now = Date(timeIntervalSince1970: 1799) // inside TTL
+    #expect(try await cache.credentials().accessToken == "tokenA")
+    #expect(counter.count == 1)
+    clock.now = Date(timeIntervalSince1970: 1801) // past TTL
+    #expect(try await cache.credentials().accessToken == "tokenB")
+    #expect(counter.count == 2)
+}
+
+@Test func failedTTLRefreshKeepsServingCachedToken() async throws {
+    let clock = CacheClockBox(Date(timeIntervalSince1970: 0))
+    let counter = CacheCallCounter()
+    let a = OAuthCredentials(accessToken: "tokenA", expiresAt: nil)
+    let cache = CredentialsCache(
+        load: {
+            counter.increment()
+            if counter.count == 1 { return a }
+            throw CredentialsError.notFound
+        },
+        now: { clock.now }
+    )
+    _ = try await cache.credentials()
+    clock.now = Date(timeIntervalSince1970: 1801) // TTL due, refresh will throw
+    #expect(try await cache.credentials().accessToken == "tokenA") // degrade, don't error
+    #expect(counter.count == 2)
+    // The failed refresh must not retry the loader on every subsequent poll.
+    clock.now = Date(timeIntervalSince1970: 1810)
+    _ = try await cache.credentials()
+    #expect(counter.count == 2)
+}
+
+private final class CacheClockBox: @unchecked Sendable {
+    var now: Date
+    init(_ d: Date) { now = d }
+}
+
+private final class CacheCallCounter: @unchecked Sendable {
+    private(set) var count = 0
+    func increment() { count += 1 }
+}
