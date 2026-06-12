@@ -101,8 +101,19 @@ as-is. The probe shows `data.total_credits` (lifetime credits purchased) and
 pick `total_credits` — or, if your account's endpoint offers a remaining-style
 field, pick that one for a true drain bar.
 
-**MiniMax** — URL `https://api.minimax.io/v1/user/balance`, header defaults
-as-is. Pick the field carrying your available balance from the probe list.
+**MiniMax (API balance)** — URL `https://api.minimax.io/v1/user/balance`,
+header defaults as-is. Pick the field carrying your available balance.
+
+**MiniMax (Coding/Token Plan)** — URL
+`https://api.minimax.io/v1/token_plan/remains`, header defaults as-is
+(coding-plan key). Pick your remaining-quota field — remaining quotas make
+perfect drain bars (full at window reset, draining as you burn tokens).
+
+**z.ai (GLM Coding Plan)** — URL
+`https://api.z.ai/api/monitor/usage/quota/limit`, then open **Advanced** and
+change Header Template from `Bearer {key}` to just `{key}` — z.ai expects the
+raw token. The probe lists both the 5-hour and weekly quota numbers; add the
+provider twice (e.g. "GLM 5h" and "GLM week") to chart both.
 
 `scripts/probe-providers.sh` prints these endpoints' raw responses (no secret
 values) if you want to inspect the JSON shape first.
