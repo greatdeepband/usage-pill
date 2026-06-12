@@ -271,8 +271,9 @@ private struct ProviderRow: View {
     /// Below the warn threshold → amber; otherwise sage green.
     private var rowTint: Color {
         if let value = rowModel.value, let warn = spec.warnBelow, value <= warn {
-            return Dusk.amber
+            return Dusk.amber // warn always overrides the accent
         }
+        if let hex = spec.accentHex { return Color(themeHex: hex) }
         return Dusk.sage
     }
 

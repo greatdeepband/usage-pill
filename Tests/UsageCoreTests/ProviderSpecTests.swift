@@ -81,3 +81,19 @@ private func sampleSpec() -> ProviderSpec {
         #expect(ProviderSpecStore(defaults: d).load().isEmpty)
     }
 }
+
+// accentHex is optional and round-trips; pre-accent JSON (no field) decodes
+// with nil — backward compatible with specs persisted before the field existed.
+@Test func accentHexRoundTripsAndOldJSONDecodes() throws {
+    var spec = sampleSpec()
+    spec.accentHex = "8FA3C2"
+    let data = try JSONEncoder().encode([spec])
+    let decoded = try JSONDecoder().decode([ProviderSpec].self, from: data)
+    #expect(decoded[0].accentHex == "8FA3C2")
+
+    var obj = try JSONSerialization.jsonObject(with: try JSONEncoder().encode(spec)) as! [String: Any]
+    obj.removeValue(forKey: "accentHex")
+    let oldData = try JSONSerialization.data(withJSONObject: obj)
+    let old = try JSONDecoder().decode(ProviderSpec.self, from: oldData)
+    #expect(old.accentHex == nil)
+}

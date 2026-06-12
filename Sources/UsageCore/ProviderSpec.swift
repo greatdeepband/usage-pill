@@ -20,16 +20,21 @@ public struct ProviderSpec: Codable, Equatable, Sendable, Identifiable {
     public var currencyCode: String?
     public var warnBelow: Double?
     public var visibility: Visibility
+    /// Optional per-row accent (hex "RRGGBB"); nil → the default sage.
+    /// Warn-threshold amber always overrides the accent in the UI.
+    public var accentHex: String?
 
     public init(id: UUID, displayName: String, adapter: AdapterKind, url: String,
                 headerName: String, headerTemplate: String, valuePath: String,
                 subtractPath: String?, scale: Double, valueKind: ValueKind,
-                currencyCode: String?, warnBelow: Double?, visibility: Visibility) {
+                currencyCode: String?, warnBelow: Double?, visibility: Visibility,
+                accentHex: String? = nil) {
         self.id = id; self.displayName = displayName; self.adapter = adapter
         self.url = url; self.headerName = headerName; self.headerTemplate = headerTemplate
         self.valuePath = valuePath; self.subtractPath = subtractPath; self.scale = scale
         self.valueKind = valueKind; self.currencyCode = currencyCode
         self.warnBelow = warnBelow; self.visibility = visibility
+        self.accentHex = accentHex
     }
 }
 
