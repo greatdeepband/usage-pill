@@ -50,6 +50,7 @@ struct AddProviderSheet: View {
     @State private var customName = ""
     @State private var showAs: ProviderSpec.ValueKind = .currency
     @State private var warnText = ""
+    @State private var saveErrorText: String?
     @State private var color: Color
     /// Round-tripped initial color; if Add sees the same hex the user never
     /// touched the picker and accentHex stays nil (row follows the default
@@ -247,8 +248,10 @@ struct AddProviderSheet: View {
 
     private func startProbe() {
         // Re-entry guard: a fast double-Continue must not spawn two probes.
-        probeTask?.cancel()
+        // Guard first so a second tap while already probing is a true no-op;
+        // only then cancel any lingering task (e.g. a Back→re-Continue path).
         guard case .customForm = step else { return }
+        probeTask?.cancel()
         probeError = nil
         step = .probing
         // Snapshot effective values; blank advanced fields fall back to the
@@ -374,7 +377,12 @@ struct AddProviderSheet: View {
                 }
                 ColorPicker("Color", selection: $color, supportsOpacity: false)
             } footer: {
-                Text("Below the warning amount, this row turns amber regardless of its color.")
+                if let saveErrorText {
+                    Text(saveErrorText)
+                        .foregroundStyle(.red)
+                } else {
+                    Text("Below the warning amount, this row turns amber regardless of its color.")
+                }
             }
         }
         .formStyle(.grouped)
@@ -415,9 +423,12 @@ struct AddProviderSheet: View {
     /// finds it and builds a real fetcher), then the spec, then the standard
     /// persist→reload + refreshAll path from ProvidersTabView.
     private func finishAdd(spec: ProviderSpec, key: String) {
-        // App-owned keychain item: writes only fail in pathological cases
-        // (and never prompt). save(key:) trims internally.
-        try? keyStore.save(key: key, for: spec.id)
+        do {
+            try keyStore.save(key: key, for: spec.id)
+        } catch {
+            saveErrorText = "Could not store the key in your keychain — the provider was not added."
+            return
+        }
         var specs = specStore.load()
         specs.append(spec)
         specStore.save(specs)

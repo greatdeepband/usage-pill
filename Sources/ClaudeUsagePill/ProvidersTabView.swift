@@ -32,7 +32,10 @@ struct ProvidersTabView: View {
     }
 
     var body: some View {
-        Form {
+        // +1 for the built-in Claude row, +1 for addRow.
+        let totalRows = specs.count + 2
+        let scrolls = totalRows > 10
+        return Form {
             Section {
                 claudeRow
                 ForEach(specs) { spec in
@@ -44,9 +47,9 @@ struct ProvidersTabView: View {
             }
         }
         .formStyle(.grouped)
-        .scrollDisabled(true)
-        .fixedSize(horizontal: false, vertical: true)
-        .frame(width: 380)
+        .scrollDisabled(!scrolls)
+        .frame(width: 380, height: scrolls ? 480 : nil)
+        .fixedSize(horizontal: false, vertical: !scrolls)
         .sheet(isPresented: $showClaudeSheet) {
             ClaudeDetailSheet(themeStore: themeStore)
         }
@@ -312,6 +315,7 @@ struct ProviderDetailSheet: View {
     @State private var color: Color
     @State private var visibility: ProviderSpec.Visibility
     @State private var confirmRemove = false
+    @State private var keySaveError: String?
     private let maskedKey: String?
     /// Round-tripped initial color; if Done sees the same hex the user never
     /// touched the picker and we keep accentHex as-is (nil stays nil → the
@@ -347,6 +351,11 @@ struct ProviderDetailSheet: View {
                         "API Key", text: $keyField,
                         prompt: Text(maskedKey.map { "\($0) — paste to replace" } ?? "paste key")
                     )
+                } footer: {
+                    if let keySaveError {
+                        Text(keySaveError)
+                            .foregroundStyle(.red)
+                    }
                 }
                 Section {
                     LabeledContent("Warn Below") {
@@ -419,10 +428,16 @@ struct ProviderDetailSheet: View {
         }
         var keyReplaced = false
         if !keyField.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            // App-owned keychain item: writes only fail in pathological cases
-            // (and never prompt). save(key:) trims internally.
-            keyReplaced = (try? keyStore.save(key: keyField, for: spec.id)) != nil
-            keyField = ""
+            do {
+                try keyStore.save(key: keyField, for: spec.id)
+                keyReplaced = true
+                keyField = ""
+                keySaveError = nil
+            } catch {
+                // Update-first ensures the old key is still in the keychain.
+                keySaveError = "Could not store the key in your keychain — the old key is unchanged."
+                return
+            }
         }
         onSave(updated, keyReplaced)
         dismiss()

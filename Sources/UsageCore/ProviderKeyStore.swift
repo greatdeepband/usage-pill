@@ -16,19 +16,25 @@ public struct ProviderKeyStore: Sendable {
 
     public enum KeyStoreError: Error { case writeFailed(OSStatus) }
 
-    /// Upserts. Trims whitespace/newlines — a pasted trailing newline would
-    /// otherwise make Foundation drop the auth header silently.
+    /// Upserts atomically. Tries SecItemUpdate first so that a failure never
+    /// destroys the existing key; only inserts if the item is not yet present.
+    /// Trims whitespace/newlines — a pasted trailing newline would otherwise
+    /// make Foundation drop the auth header silently.
     public func save(key: String, for id: UUID) throws {
         let trimmed = key.trimmingCharacters(in: .whitespacesAndNewlines)
-        deleteKey(for: id)
-        let attrs: [String: Any] = [
+        let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
             kSecAttrAccount as String: id.uuidString,
-            kSecValueData as String: Data(trimmed.utf8),
-            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlock,
         ]
-        let status = SecItemAdd(attrs as CFDictionary, nil)
+        let update: [String: Any] = [kSecValueData as String: Data(trimmed.utf8)]
+        var status = SecItemUpdate(query as CFDictionary, update as CFDictionary)
+        if status == errSecItemNotFound {
+            var attrs = query
+            attrs[kSecValueData as String] = Data(trimmed.utf8)
+            attrs[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlock
+            status = SecItemAdd(attrs as CFDictionary, nil)
+        }
         guard status == errSecSuccess else { throw KeyStoreError.writeFailed(status) }
     }
 

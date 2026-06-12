@@ -35,7 +35,7 @@ public final class ProvidersModel: ObservableObject {
     /// Row models for UNCHANGED specs are preserved (keeps value/status).
     public func reload() {
         let specs = specStore.load().filter { $0.visibility != .hidden }
-        var existing = Dictionary(uniqueKeysWithValues: rows.map { ($0.spec.id, $0) })
+        var existing = Dictionary(rows.map { ($0.spec.id, $0) }, uniquingKeysWith: { a, _ in a })
         rows = specs.map { spec in
             if let old = existing.removeValue(forKey: spec.id), old.spec == spec {
                 return old

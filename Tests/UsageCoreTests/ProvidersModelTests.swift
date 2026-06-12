@@ -208,6 +208,32 @@ private final class PMResultBox: @unchecked Sendable {
     }
 }
 
+@Test @MainActor func duplicateSpecIDsDoNotTrap() {
+    TestDefaults.withFresh(prefix: "provider-spec-tests-") { d in
+        let sharedID = UUID()
+        // Two specs sharing one UUID — should not crash on init or reload.
+        let specs = [
+            makeSpec(id: sharedID, displayName: "First",  visibility: .pinned),
+            makeSpec(id: sharedID, displayName: "Second", visibility: .pinned),
+        ]
+        let store = ProviderSpecStore(defaults: d)
+        store.save(specs)
+        let model = ProvidersModel(
+            specStore: store,
+            keyLookup: { _ in "sk-test" },
+            makeFetch: { _, _ in { 1.0 } }
+        )
+        // Both specs are in the store; the duplicate ID is deduplicated in the
+        // existing-rows dict (uniquingKeysWith keeps first), but the specs
+        // array itself still drives rows — both rows are built, both mapped
+        // against the same (first-wins) existing entry.
+        #expect(model.rows.count == 2)
+        // Reload must not trap either.
+        model.reload()
+        #expect(model.rows.count == 2)
+    }
+}
+
 // refreshAll must run rows CONCURRENTLY: both gated fetchers must be in-flight
 // before either is released. A serial implementation never starts row 2 while
 // row 1 is gated, so `started` would stall at 1 and this test FAILS (not hangs)
