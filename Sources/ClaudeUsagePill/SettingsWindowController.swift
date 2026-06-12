@@ -27,19 +27,18 @@ final class SettingsWindowController {
 
     func show() {
         if let window {
+            // Fresh content every open: a window closed mid-page would
+            // otherwise keep that page's state alive — including a stale
+            // Claude-page entry snapshot whose Back would revert edits the
+            // user already kept by closing the window (Task 18c review).
+            window.contentViewController = makeHost()
+            window.title = "Settings"
             window.makeKeyAndOrderFront(nil)
             NSApp.activate(ignoringOtherApps: true)
             return
         }
 
-        let host = NSHostingController(rootView: ProvidersTabView(
-            themeStore: themeStore,
-            providersModel: providersModel,
-            specStore: specStore,
-            keyStore: keyStore,
-            onTitle: { [weak self] title in self?.window?.title = title }
-        ))
-        host.sizingOptions = .preferredContentSize
+        let host = makeHost()
 
         let w = NSWindow(contentViewController: host)
         w.styleMask = [.titled, .closable] // settings windows aren't resizable
@@ -54,5 +53,17 @@ final class SettingsWindowController {
         window = w
         w.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
+    }
+
+    private func makeHost() -> NSHostingController<ProvidersTabView> {
+        let host = NSHostingController(rootView: ProvidersTabView(
+            themeStore: themeStore,
+            providersModel: providersModel,
+            specStore: specStore,
+            keyStore: keyStore,
+            onTitle: { [weak self] title in self?.window?.title = title }
+        ))
+        host.sizingOptions = .preferredContentSize
+        return host
     }
 }
