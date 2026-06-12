@@ -377,7 +377,7 @@ struct AddProviderSheet: View {
                     }
                 }
                 ProviderAccentSwatchRow(accent: $accent, color: $color)
-                ColorPicker("Custom", selection: customColorBinding, supportsOpacity: false)
+                ColorPicker("Custom", selection: customColorBinding, supportsOpacity: true) // alpha: Mist (#FFFFFFBF) must stay editable
             } footer: {
                 if let saveErrorText {
                     Text(saveErrorText)

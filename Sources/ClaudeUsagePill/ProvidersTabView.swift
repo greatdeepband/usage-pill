@@ -597,7 +597,7 @@ struct ProviderDetailSheet: View {
                         }
                     }
                     ProviderAccentSwatchRow(accent: $accent, color: $color)
-                    ColorPicker("Custom", selection: customColorBinding, supportsOpacity: false)
+                    ColorPicker("Custom", selection: customColorBinding, supportsOpacity: true) // alpha: Mist (#FFFFFFBF) must stay editable
                     Picker("Show in Pill", selection: $visibility) {
                         visibilityOptions
                     }
