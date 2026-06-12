@@ -6,6 +6,7 @@ enum Dusk {
     static let dustyBlue = Color(red: 0x8F / 255, green: 0xA3 / 255, blue: 0xC2 / 255)
     static let amber = Color(red: 0xD9 / 255, green: 0xB2 / 255, blue: 0x6B / 255)
     static let softRed = Color(red: 0xC9 / 255, green: 0x83 / 255, blue: 0x83 / 255)
+    static let sage = Color(red: 0x9D / 255, green: 0xB3 / 255, blue: 0x9A / 255)
 
     static func barColor(utilization: Double, base: Color) -> Color {
         switch BarTone.tone(forUtilization: utilization) {
@@ -20,6 +21,7 @@ struct PillView: View {
     @ObservedObject var model: UsageModel
     @ObservedObject var theme: ThemeStore
     @ObservedObject var identity: IdentityModel
+    @ObservedObject var providers: ProvidersModel
     var onExpandChange: (Bool) -> Void
 
     @State private var expanded = false
@@ -37,23 +39,52 @@ struct PillView: View {
             .onReceive(tick) { now = $0 }
     }
 
+    /// Visible in the current mode: compact shows pinned only; expanded shows
+    /// pinned + expandedOnly (hidden rows are absent everywhere).
+    private func isVisible(_ visibility: ProviderSpec.Visibility) -> Bool {
+        expanded ? visibility != .hidden : visibility == .pinned
+    }
+
+    /// ProvidersModel already drops hidden specs; compact additionally
+    /// restricts to pinned. Spec order is preserved.
+    private var visibleProviderRows: [ProvidersModel.Row] {
+        providers.rows.filter { isVisible($0.spec.visibility) }
+    }
+
     @ViewBuilder private var content: some View {
         let shape: AnyShape = expanded ? AnyShape(RoundedRectangle(cornerRadius: 18)) : AnyShape(Capsule())
+        let showSession = isVisible(theme.sessionVisibility)
+        let showWeek = isVisible(theme.weekVisibility)
+        let providerRows = visibleProviderRows
         VStack(alignment: .leading, spacing: expanded ? 10 : 6) {
             if expanded && theme.showIdentity && (identity.email != nil || identity.planBadge != nil) {
                 identityStrip
             }
-            barRow(
-                window: model.snapshot?.session, base: Color(themeHex: theme.theme.sessionHex), symbol: "clock",
-                label: "Session",
-                resetText: CountdownFormatter.remaining(until: model.snapshot?.session?.resetsAt, now: now)
-            )
-            barRow(
-                window: model.snapshot?.week, base: Color(themeHex: theme.theme.weekHex), symbol: "calendar",
-                label: "Week",
-                resetText: CountdownFormatter.weekReset(model.snapshot?.week?.resetsAt, now: now)
-            )
-            if expanded { footer }
+            if !showSession && !showWeek && providerRows.isEmpty {
+                Text("open Settings")
+                    .font(.system(size: 9.5))
+                    .foregroundStyle(.white.opacity(0.5))
+                    .frame(maxWidth: .infinity, alignment: .center)
+            } else {
+                if showSession {
+                    barRow(
+                        window: model.snapshot?.session, base: Color(themeHex: theme.theme.sessionHex), symbol: "clock",
+                        label: "Session",
+                        resetText: CountdownFormatter.remaining(until: model.snapshot?.session?.resetsAt, now: now)
+                    )
+                }
+                if showWeek {
+                    barRow(
+                        window: model.snapshot?.week, base: Color(themeHex: theme.theme.weekHex), symbol: "calendar",
+                        label: "Week",
+                        resetText: CountdownFormatter.weekReset(model.snapshot?.week?.resetsAt, now: now)
+                    )
+                }
+                ForEach(providerRows) { row in
+                    ProviderRow(spec: row.spec, rowModel: row.model, expanded: expanded)
+                }
+                if expanded { footer }
+            }
         }
         .padding(.horizontal, 16)
         .padding(.vertical, expanded ? 13 : 8)
@@ -141,9 +172,93 @@ struct PillView: View {
                 }
             }
             Spacer()
-            Text(model.secondsSinceSuccess().map(CountdownFormatter.updatedAgo) ?? "no data yet")
+            Text(oldestSuccessSeconds.map(CountdownFormatter.updatedAgo) ?? "no data yet")
                 .font(.system(size: 9.5))
                 .foregroundStyle(model.isDataOld ? Dusk.amber.opacity(0.9) : .white.opacity(0.4))
+        }
+    }
+
+    /// Seconds since the OLDEST success across the Claude model (when any
+    /// Claude row is visible) and all visible provider rows. nil if any
+    /// visible row never succeeded — keeps the "no data yet" semantics.
+    private var oldestSuccessSeconds: TimeInterval? {
+        var dates: [Date] = []
+        if isVisible(theme.sessionVisibility) || isVisible(theme.weekVisibility) {
+            guard let d = model.lastSuccess else { return nil }
+            dates.append(d)
+        }
+        for row in visibleProviderRows {
+            guard let d = row.model.lastSuccess else { return nil }
+            dates.append(d)
+        }
+        guard let oldest = dates.min() else { return nil }
+        return now.timeIntervalSince(oldest)
+    }
+}
+
+/// One provider line. Separate view so each row observes its OWN
+/// ProviderRowModel — a slow provider invalidates only its row.
+private struct ProviderRow: View {
+    let spec: ProviderSpec
+    @ObservedObject var rowModel: ProviderRowModel
+    let expanded: Bool
+
+    var body: some View {
+        HStack(spacing: 9) {
+            Text(String(spec.displayName.prefix(1)))
+                .font(.system(size: 9, weight: .bold))
+                .foregroundStyle(rowTint)
+                .frame(width: 12)
+            Text(spec.displayName)
+                .font(.system(size: 9.5))
+                .foregroundStyle(.white.opacity(0.6))
+                .lineLimit(1)
+            Spacer(minLength: 4)
+            if expanded, let (caption, color) = staleCaption {
+                Text(caption)
+                    .font(.system(size: 9))
+                    .foregroundStyle(color)
+            }
+            Text(valueText)
+                .font(.system(size: 10.5).monospacedDigit())
+                .foregroundStyle(rowTint.opacity(expanded && isStale ? 0.6 : 1))
+        }
+    }
+
+    private var isStale: Bool {
+        if case .stale = rowModel.status { return true }
+        return false
+    }
+
+    private var staleCaption: (String, Color)? {
+        guard case .stale(let failure) = rowModel.status else { return nil }
+        switch failure {
+        case .auth: return ("check key", Dusk.amber)
+        case .rateLimited: return ("rate limited", Dusk.amber)
+        case .network: return ("offline", Color.white.opacity(0.4))
+        }
+    }
+
+    /// Below the warn threshold → amber; otherwise sage green.
+    private var rowTint: Color {
+        if let value = rowModel.value, let warn = spec.warnBelow, value <= warn {
+            return Dusk.amber
+        }
+        return Dusk.sage
+    }
+
+    private var valueText: String {
+        guard let value = rowModel.value else { return "—" }
+        let number = String(format: "%.2f", value)
+        guard spec.valueKind == .currency, let code = spec.currencyCode?.uppercased() else {
+            return number
+        }
+        switch code {
+        case "USD": return "$" + number
+        case "EUR": return "€" + number
+        case "GBP": return "£" + number
+        case "JPY", "CNY": return "¥" + number
+        default: return code + " " + number
         }
     }
 }

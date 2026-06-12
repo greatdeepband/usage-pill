@@ -7,6 +7,8 @@ final class ThemeStore: ObservableObject {
     @Published private(set) var theme: Theme
     @Published private(set) var palette: Palette
     @Published var showIdentity: Bool { didSet { persist() } }
+    @Published private(set) var sessionVisibility: ProviderSpec.Visibility
+    @Published private(set) var weekVisibility: ProviderSpec.Visibility
 
     private let settings: ThemeSettings
 
@@ -15,7 +17,19 @@ final class ThemeStore: ObservableObject {
         let loaded = settings.load()
         theme = loaded.theme
         palette = loaded.palette
+        sessionVisibility = loaded.sessionVisibility
+        weekVisibility = loaded.weekVisibility
         showIdentity = loaded.showIdentity // didSet does not fire during init — no spurious persist()
+    }
+
+    func setSessionVisibility(_ v: ProviderSpec.Visibility) {
+        sessionVisibility = v
+        persist()
+    }
+
+    func setWeekVisibility(_ v: ProviderSpec.Visibility) {
+        weekVisibility = v
+        persist()
     }
 
     func select(_ p: Palette) {
@@ -40,7 +54,8 @@ final class ThemeStore: ObservableObject {
     }
 
     private func persist() {
-        settings.save(theme: theme, palette: palette, showIdentity: showIdentity)
+        settings.save(theme: theme, palette: palette, showIdentity: showIdentity,
+                      sessionVisibility: sessionVisibility, weekVisibility: weekVisibility)
     }
 }
 

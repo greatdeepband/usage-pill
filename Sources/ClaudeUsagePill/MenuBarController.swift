@@ -6,10 +6,14 @@ import UsageCore
 final class MenuBarController: NSObject {
     private var statusItem: NSStatusItem!
     private let model: UsageModel
+    private let onForceRefreshProviders: () -> Void
     private let onOpenSettings: () -> Void
 
-    init(model: UsageModel, onOpenSettings: @escaping () -> Void) {
+    init(model: UsageModel,
+         onForceRefreshProviders: @escaping () -> Void,
+         onOpenSettings: @escaping () -> Void) {
         self.model = model
+        self.onForceRefreshProviders = onForceRefreshProviders
         self.onOpenSettings = onOpenSettings
         super.init()
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
@@ -35,8 +39,10 @@ final class MenuBarController: NSObject {
     }
 
     @objc private func refresh() {
-        // Explicit user intent overrides the rate-limit backoff window.
+        // Explicit user intent overrides the rate-limit backoff window —
+        // for BOTH the Claude model and every provider row.
         Task { @MainActor in await model.refresh(force: true) }
+        onForceRefreshProviders()
     }
 
     @objc private func toggleLogin() {

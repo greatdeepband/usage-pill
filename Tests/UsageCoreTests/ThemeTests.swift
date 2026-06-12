@@ -24,11 +24,41 @@ import Testing
     TestDefaults.withFresh(prefix: "theme-tests-") { d in
         let s = ThemeSettings(defaults: d)
         let custom = Theme(sessionHex: "#11223344", weekHex: "#55667788")
-        s.save(theme: custom, palette: .custom, showIdentity: true)
+        s.save(theme: custom, palette: .custom, showIdentity: true,
+               sessionVisibility: .pinned, weekVisibility: .pinned)
         let loaded = ThemeSettings(defaults: d).load()
         #expect(loaded.theme == custom)
         #expect(loaded.palette == .custom)
         #expect(loaded.showIdentity == true)
+    }
+}
+
+@Test func claudeVisibilityDefaultsToPinned() {
+    TestDefaults.withFresh(prefix: "theme-tests-") { d in
+        let loaded = ThemeSettings(defaults: d).load()
+        #expect(loaded.sessionVisibility == .pinned)
+        #expect(loaded.weekVisibility == .pinned)
+    }
+}
+
+@Test func claudeVisibilityRoundTrips() {
+    TestDefaults.withFresh(prefix: "theme-tests-") { d in
+        let s = ThemeSettings(defaults: d)
+        s.save(theme: Palette.dusk.preset!, palette: .dusk, showIdentity: false,
+               sessionVisibility: .expandedOnly, weekVisibility: .hidden)
+        let loaded = ThemeSettings(defaults: d).load()
+        #expect(loaded.sessionVisibility == .expandedOnly)
+        #expect(loaded.weekVisibility == .hidden)
+    }
+}
+
+@Test func garbageClaudeVisibilityFallsBackToPinned() {
+    TestDefaults.withFresh(prefix: "theme-tests-") { d in
+        d.set("sometimes", forKey: "claude.sessionVisibility")
+        d.set(42, forKey: "claude.weekVisibility")
+        let loaded = ThemeSettings(defaults: d).load()
+        #expect(loaded.sessionVisibility == .pinned)
+        #expect(loaded.weekVisibility == .pinned)
     }
 }
 

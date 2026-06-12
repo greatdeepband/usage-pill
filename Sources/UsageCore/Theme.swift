@@ -29,26 +29,41 @@ public struct ThemeSettings {
     public static let weekKey = "theme.week"
     public static let paletteKey = "theme.palette"
     public static let identityKey = "identity.show"
+    public static let sessionVisibilityKey = "claude.sessionVisibility"
+    public static let weekVisibilityKey = "claude.weekVisibility"
 
     private let defaults: UserDefaults
     public init(defaults: UserDefaults = .standard) { self.defaults = defaults }
 
-    public func load() -> (theme: Theme, palette: Palette, showIdentity: Bool) {
+    public func load() -> (theme: Theme, palette: Palette, showIdentity: Bool,
+                           sessionVisibility: ProviderSpec.Visibility,
+                           weekVisibility: ProviderSpec.Visibility) {
         let showIdentity = defaults.bool(forKey: Self.identityKey) // default false
+        // Claude row visibility: corrupt/unknown values fall back to pinned,
+        // independently of the theme's Dusk fallback below.
+        let sessionVisibility = defaults.string(forKey: Self.sessionVisibilityKey)
+            .flatMap(ProviderSpec.Visibility.init(rawValue:)) ?? .pinned
+        let weekVisibility = defaults.string(forKey: Self.weekVisibilityKey)
+            .flatMap(ProviderSpec.Visibility.init(rawValue:)) ?? .pinned
         let palette = defaults.string(forKey: Self.paletteKey).flatMap(Palette.init(rawValue:))
         let session = defaults.string(forKey: Self.sessionKey)
         let week = defaults.string(forKey: Self.weekKey)
         if let palette, let session, let week,
            ThemeColor.parse(session) != nil, ThemeColor.parse(week) != nil {
-            return (Theme(sessionHex: session, weekHex: week), palette, showIdentity)
+            return (Theme(sessionHex: session, weekHex: week), palette, showIdentity,
+                    sessionVisibility, weekVisibility)
         }
-        return (Palette.dusk.preset!, .dusk, showIdentity)
+        return (Palette.dusk.preset!, .dusk, showIdentity, sessionVisibility, weekVisibility)
     }
 
-    public func save(theme: Theme, palette: Palette, showIdentity: Bool) {
+    public func save(theme: Theme, palette: Palette, showIdentity: Bool,
+                     sessionVisibility: ProviderSpec.Visibility,
+                     weekVisibility: ProviderSpec.Visibility) {
         defaults.set(theme.sessionHex, forKey: Self.sessionKey)
         defaults.set(theme.weekHex, forKey: Self.weekKey)
         defaults.set(palette.rawValue, forKey: Self.paletteKey)
         defaults.set(showIdentity, forKey: Self.identityKey)
+        defaults.set(sessionVisibility.rawValue, forKey: Self.sessionVisibilityKey)
+        defaults.set(weekVisibility.rawValue, forKey: Self.weekVisibilityKey)
     }
 }

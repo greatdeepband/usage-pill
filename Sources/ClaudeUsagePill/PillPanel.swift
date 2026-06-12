@@ -2,19 +2,31 @@ import AppKit
 import UsageCore
 
 final class PillPanel: NSPanel {
-    static let compactSize = NSSize(width: 250, height: 50)
-    static let expandedSize = NSSize(width: 250, height: 132)
-    static let identityExtraHeight: CGFloat = 18
     private static let originKey = "pillTopLeft"
 
+    // Row counts, set by AppDelegate via applyRowCounts(...).
+    var pinnedClaudeRows = 2
+    var pinnedProviderRows = 0
+    var expandedClaudeRows = 2
+    var expandedProviderRows = 0
     /// Set by AppDelegate when the identity toggle changes.
     var identityEnabled = false
 
-    private var currentExpandedSize: NSSize {
-        var s = Self.expandedSize
-        if identityEnabled { s.height += Self.identityExtraHeight }
-        return s
+    private var compactSize: NSSize {
+        let rows = max(pinnedClaudeRows, 0) * 16 + max(pinnedProviderRows, 0) * 14
+        return NSSize(width: 250, height: max(30, 18 + CGFloat(rows)))
     }
+
+    private var currentExpandedSize: NSSize {
+        let rows = max(expandedClaudeRows, 0) * 33 + max(expandedProviderRows, 0) * 18
+        var h = max(44, 36 + CGFloat(rows))
+        if identityEnabled { h += 18 }
+        return NSSize(width: 250, height: h)
+    }
+
+    /// Tracks the last state requested through setExpanded — applyRowCounts
+    /// must not fight an expanded panel back down to compact size.
+    private var isExpandedNow = false
 
     /// When true, `saveLocation()` is a no-op.  Set during any programmatic
     /// reposition so system-induced moves never overwrite the user's saved top-left.
@@ -22,7 +34,9 @@ final class PillPanel: NSPanel {
 
     init() {
         super.init(
-            contentRect: NSRect(origin: .zero, size: Self.compactSize),
+            // Matches compactSize for the default row counts (2 Claude rows,
+            // no providers); instance properties can't be used before super.init.
+            contentRect: NSRect(origin: .zero, size: NSSize(width: 250, height: 50)),
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false
@@ -54,11 +68,12 @@ final class PillPanel: NSPanel {
 
     /// Grow/shrink downward, keeping the top edge fixed.
     func setExpanded(_ expanded: Bool) {
+        isExpandedNow = expanded
         // This guard is race-free ONLY because setFrame(animate: true) blocks the main
         // thread until the animation completes (verified empirically); if this is ever
         // switched to non-blocking animator() animation, replace the guard with an
         // explicit desired-state flag.
-        let size = expanded ? currentExpandedSize : Self.compactSize
+        let size = expanded ? currentExpandedSize : compactSize
         guard frame.size != size else { return }
         var f = frame
         let top = f.origin.y + f.size.height
@@ -78,6 +93,29 @@ final class PillPanel: NSPanel {
         setFrame(f, display: true, animate: true)
     }
 
+    /// Sync row counts from AppDelegate. When collapsed, re-applies the
+    /// (possibly changed) compact frame, keeping the top edge fixed.  An
+    /// expanded panel is left alone — the next hover-out collapses it to the
+    /// fresh compact size via setExpanded.
+    func applyRowCounts(pinnedClaude: Int, pinnedProviders: Int,
+                        expandedClaude: Int, expandedProviders: Int, identity: Bool) {
+        pinnedClaudeRows = pinnedClaude
+        pinnedProviderRows = pinnedProviders
+        expandedClaudeRows = expandedClaude
+        expandedProviderRows = expandedProviders
+        identityEnabled = identity
+        guard !isExpandedNow else { return }
+        let size = compactSize
+        guard frame.size != size else { return }
+        var f = frame
+        let top = f.origin.y + f.size.height
+        f.size = size
+        f.origin.y = top - size.height
+        suppressSave = true
+        defer { suppressSave = false }
+        setFrame(f, display: true)
+    }
+
     private var topLeft: CGPoint {
         CGPoint(x: frame.origin.x, y: frame.origin.y + frame.height)
     }
@@ -89,7 +127,7 @@ final class PillPanel: NSPanel {
         // drags.  AppKit constrains user drags to always end fully on-screen, so a
         // clamped top-left that differs from the raw one means the system moved us.
         let tl = topLeft
-        guard clampTopLeft(tl, pillSize: Self.compactSize,
+        guard clampTopLeft(tl, pillSize: compactSize,
                             screens: NSScreen.screens.map(\.visibleFrame)) == tl else { return }
         UserDefaults.standard.set(NSStringFromPoint(tl), forKey: Self.originKey)
     }
@@ -101,15 +139,16 @@ final class PillPanel: NSPanel {
     }
 
     private func restoreOrDefaultPosition() {
+        let size = compactSize
         let screens = NSScreen.screens.map(\.visibleFrame)
         let saved = UserDefaults.standard.string(forKey: Self.originKey).map(NSPointFromString)
         let fallback: CGPoint = {
             let main = screens.first ?? CGRect(x: 0, y: 0, width: 1440, height: 900)
-            return CGPoint(x: main.maxX - Self.compactSize.width - 16, y: main.maxY - 16)
+            return CGPoint(x: main.maxX - size.width - 16, y: main.maxY - 16)
         }()
-        let clamped = clampTopLeft(saved ?? fallback, pillSize: Self.compactSize, screens: screens)
+        let clamped = clampTopLeft(saved ?? fallback, pillSize: size, screens: screens)
         suppressSave = true
         defer { suppressSave = false }
-        setFrameOrigin(CGPoint(x: clamped.x, y: clamped.y - Self.compactSize.height))
+        setFrameOrigin(CGPoint(x: clamped.x, y: clamped.y - size.height))
     }
 }
