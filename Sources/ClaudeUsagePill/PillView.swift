@@ -286,11 +286,16 @@ private struct ProviderRow: View {
     @ObservedObject var rowModel: ProviderRowModel
     let expanded: Bool
 
+    /// Spend rows (OpenAI month-to-date): the value GROWS, so there is no
+    /// baseline, no drain bar and no "of" text — value only, with the warn
+    /// comparison flipped (amber at/ABOVE the threshold).
+    private var isSpend: Bool { spec.adapter == .openAISpend }
+
     var body: some View {
         if expanded {
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 9) {
-                    Text("Credits")
+                    Text(isSpend ? "This Month" : "Credits")
                         .font(.system(size: 11, weight: .semibold))
                         .foregroundStyle(.white.opacity(0.85))
                     Spacer(minLength: 4)
@@ -303,7 +308,7 @@ private struct ProviderRow: View {
                         .font(.system(size: 10.5).monospacedDigit())
                         .foregroundStyle(rowTint.opacity(isStale ? 0.6 : 1))
                 }
-                drainBar
+                if !isSpend { drainBar }
             }
         } else {
             HStack(spacing: 9) {
@@ -311,7 +316,17 @@ private struct ProviderRow: View {
                     .fill(rowTint.opacity(0.7))
                     .frame(width: 10, height: 10)
                     .frame(width: 12)
-                drainBar
+                if isSpend {
+                    // Name fills the bar's slot; the Spacer keeps the value
+                    // trailing-aligned with the other compact rows.
+                    Text(spec.displayName)
+                        .font(.system(size: 10.5))
+                        .foregroundStyle(.white.opacity(0.75))
+                        .lineLimit(1)
+                    Spacer(minLength: 4)
+                } else {
+                    drainBar
+                }
                 Text(valueText)
                     .font(.system(size: 10.5).monospacedDigit())
                     .foregroundStyle(rowTint)
@@ -350,9 +365,13 @@ private struct ProviderRow: View {
         }
     }
 
-    /// Below the warn threshold → amber; otherwise sage green.
+    /// Below the warn threshold → amber; otherwise sage green. Spend rows
+    /// FLIP the comparison (warnBelow stores a warn-ABOVE amount): amber at
+    /// or over the threshold. Only this adapter flips — generic rows keep
+    /// the 1.0 semantics.
     private var rowTint: Color {
-        if let value = rowModel.value, let warn = spec.warnBelow, value <= warn {
+        if let value = rowModel.value, let warn = spec.warnBelow,
+           isSpend ? value >= warn : value <= warn {
             return Dusk.amber // warn always overrides the accent
         }
         if let hex = spec.accentHex { return Color(themeHex: hex) }
@@ -366,9 +385,11 @@ private struct ProviderRow: View {
 
     /// "$37.25 of $50.00" — always shows the baseline once one exists (it is
     /// set on every success, so the plain-value fallback is defensive only).
+    /// Spend rows never show "of": the row model still tracks a baseline,
+    /// but a growing monthly total has no meaningful "full" to drain from.
     private var expandedValueText: String {
         guard let value = rowModel.value else { return "—" }
-        guard let baseline = rowModel.baseline else { return formatted(value) }
+        guard !isSpend, let baseline = rowModel.baseline else { return formatted(value) }
         return "\(formatted(value)) of \(formatted(baseline))"
     }
 

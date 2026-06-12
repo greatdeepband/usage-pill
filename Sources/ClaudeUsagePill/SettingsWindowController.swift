@@ -14,15 +14,20 @@ final class SettingsWindowController {
     private let providersModel: ProvidersModel
     private let specStore: ProviderSpecStore
     private let keyStore: ProviderKeyStore
+    /// Relayed to the add flow's Claude walkthrough (read-only credential
+    /// presence check, built once in AppDelegate).
+    private let claudeCheck: () -> Bool
 
     init(themeStore: ThemeStore,
          providersModel: ProvidersModel,
          specStore: ProviderSpecStore,
-         keyStore: ProviderKeyStore) {
+         keyStore: ProviderKeyStore,
+         claudeCheck: @escaping () -> Bool) {
         self.themeStore = themeStore
         self.providersModel = providersModel
         self.specStore = specStore
         self.keyStore = keyStore
+        self.claudeCheck = claudeCheck
     }
 
     func show() {
@@ -61,6 +66,7 @@ final class SettingsWindowController {
             providersModel: providersModel,
             specStore: specStore,
             keyStore: keyStore,
+            claudeCheck: claudeCheck,
             onTitle: { [weak self] title in self?.window?.title = title }
         ))
         host.sizingOptions = .preferredContentSize

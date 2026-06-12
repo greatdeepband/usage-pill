@@ -21,6 +21,10 @@ struct ProvidersTabView: View {
     @ObservedObject var providersModel: ProvidersModel
     let specStore: ProviderSpecStore
     let keyStore: ProviderKeyStore
+    /// Read-only Claude Code credential presence check for the add flow's
+    /// walkthrough page — injected from the AppDelegate wiring so no view
+    /// builds keychain machinery of its own.
+    let claudeCheck: () -> Bool
     /// Window-title relay: fires on appearance and on every page change.
     var onTitle: (String) -> Void = { _ in }
 
@@ -38,11 +42,13 @@ struct ProvidersTabView: View {
          providersModel: ProvidersModel,
          specStore: ProviderSpecStore,
          keyStore: ProviderKeyStore,
+         claudeCheck: @escaping () -> Bool,
          onTitle: @escaping (String) -> Void = { _ in }) {
         self.themeStore = themeStore
         self.providersModel = providersModel
         self.specStore = specStore
         self.keyStore = keyStore
+        self.claudeCheck = claudeCheck
         self.onTitle = onTitle
         _specs = State(initialValue: specStore.load())
     }
@@ -81,6 +87,14 @@ struct ProvidersTabView: View {
                     specStore: specStore,
                     keyStore: keyStore,
                     providersModel: providersModel,
+                    claudeRemoved: { themeStore.sessionVisibility == .hidden
+                        && themeStore.weekVisibility == .hidden },
+                    claudeCheck: claudeCheck,
+                    onClaudeConnected: {
+                        // Path-A "add": flip both built-in rows back on.
+                        themeStore.setSessionVisibility(.pinned)
+                        themeStore.setWeekVisibility(.pinned)
+                    },
                     onClose: { navigate(to: .list) }
                 )
                 .transition(Self.detailTransition)
@@ -278,11 +292,14 @@ struct ProvidersTabView: View {
     }
 
     /// e.g. "balance · warn under $5 · key ••••a4e6". Only the keychain's
-    /// MASKED form ever reaches the UI.
+    /// MASKED form ever reaches the UI. Spend rows read "spend · warn above"
+    /// (their threshold is a warn-ABOVE amount).
     private func subtitle(for spec: ProviderSpec) -> String {
-        var parts = [spec.valueKind == .currency ? "balance" : "number"]
+        let isSpend = spec.adapter == .openAISpend
+        var parts = [isSpend ? "spend" : (spec.valueKind == .currency ? "balance" : "number")]
         if let warn = spec.warnBelow {
-            parts.append("warn under \(currencySymbol(spec.currencyCode))\(trimmedNumber(warn))")
+            parts.append("warn \(isSpend ? "above" : "under") "
+                + "\(currencySymbol(spec.currencyCode))\(trimmedNumber(warn))")
         }
         if let key = keyStore.loadKey(for: spec.id) {
             parts.append("key \(ProviderKeyStore.masked(key))")
@@ -649,6 +666,10 @@ struct ProviderSettingsPage: View {
     let onDelete: () -> Void
     let onClose: () -> Void
 
+    /// Spend rows flip the warn semantics (warnBelow stores a warn-ABOVE
+    /// amount) — the label and footer follow.
+    private var isSpend: Bool { spec.adapter == .openAISpend }
+
     @State private var name: String
     @State private var keyField = ""
     @State private var warnText: String
@@ -708,7 +729,9 @@ struct ProviderSettingsPage: View {
                 CardFooter(text: keySaveError, color: .red)
             }
             SettingsCard {
-                labeledRow("Warn Below") {
+                // .openAISpend stores a warn-ABOVE amount in the same field
+                // (presentation flips the label and comparison; model dumb).
+                labeledRow(isSpend ? "Warn Above" : "Warn Below") {
                     HStack(spacing: 4) {
                         Text(currencySymbol(spec.currencyCode))
                             .foregroundStyle(.secondary)
@@ -731,7 +754,9 @@ struct ProviderSettingsPage: View {
                     CapsulePicker(options: visibilityOptions, selection: $visibility)
                 }
             }
-            CardFooter(text: "Below the warning amount, this row turns amber regardless of its color.")
+            CardFooter(text: isSpend
+                ? "At or above the warning amount, this row turns amber."
+                : "Below the warning amount, this row turns amber regardless of its color.")
             SettingsCard {
                 Button {
                     confirmRemove = true

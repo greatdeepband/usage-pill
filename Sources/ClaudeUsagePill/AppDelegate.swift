@@ -83,7 +83,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             themeStore: themeStore,
             providersModel: providersModel,
             specStore: specStore,
-            keyStore: keyStore
+            keyStore: keyStore,
+            // Walkthrough credential check: the SAME read-only loader the
+            // smart default used above — presence only, nothing retained.
+            claudeCheck: { (try? provider.load()) != nil }
         )
 
         panel = PillPanel()
