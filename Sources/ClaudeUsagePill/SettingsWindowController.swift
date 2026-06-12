@@ -8,21 +8,26 @@ import UsageCore
 /// `.preferredContentSize` sizing so the window hugs the current page; the
 /// window title follows the page via the onTitle relay.
 @MainActor
-final class SettingsWindowController {
+final class SettingsWindowController: NSObject, NSWindowDelegate {
     private var window: NSWindow?
     private let themeStore: ThemeStore
     private let providersModel: ProvidersModel
     private let specStore: ProviderSpecStore
     private let keyStore: ProviderKeyStore
+    /// Relayed to the add flow's Claude walkthrough (read-only credential
+    /// presence check, built once in AppDelegate).
+    private let claudeCheck: () -> Bool
 
     init(themeStore: ThemeStore,
          providersModel: ProvidersModel,
          specStore: ProviderSpecStore,
-         keyStore: ProviderKeyStore) {
+         keyStore: ProviderKeyStore,
+         claudeCheck: @escaping () -> Bool) {
         self.themeStore = themeStore
         self.providersModel = providersModel
         self.specStore = specStore
         self.keyStore = keyStore
+        self.claudeCheck = claudeCheck
     }
 
     func show() {
@@ -44,6 +49,7 @@ final class SettingsWindowController {
         w.styleMask = [.titled, .closable] // settings windows aren't resizable
         w.title = "Settings"
         w.isReleasedWhenClosed = false
+        w.delegate = self
         // Direction-2 ("soft like the pill"): the white-6% cards and
         // black-30% capsule fields are designed against the pill's dark
         // palette — pin the content to dark so the design reads in any
@@ -55,12 +61,22 @@ final class SettingsWindowController {
         NSApp.activate(ignoringOtherApps: true)
     }
 
+    nonisolated func windowWillClose(_ notification: Notification) {
+        // Tear the SwiftUI hierarchy down NOW so .task/.onDisappear cancellation
+        // actually runs — otherwise probe/walkthrough tasks survive into a hidden
+        // window (hostile review, 1.1).
+        MainActor.assumeIsolated {
+            window?.contentViewController = nil
+        }
+    }
+
     private func makeHost() -> NSHostingController<ProvidersTabView> {
         let host = NSHostingController(rootView: ProvidersTabView(
             themeStore: themeStore,
             providersModel: providersModel,
             specStore: specStore,
             keyStore: keyStore,
+            claudeCheck: claudeCheck,
             onTitle: { [weak self] title in self?.window?.title = title }
         ))
         host.sizingOptions = .preferredContentSize

@@ -1,31 +1,47 @@
+import AppKit
 import SwiftUI
 import UsageCore
 
-/// Add-provider flow (plan Task 16, now a PUSHED page per Task 18c): preset
-/// picker + dead-simple custom discovery. One enum-driven state machine; ALL
-/// field state lives on the flow itself so its internal Back always preserves
-/// entries. Nothing persists until the final "Add to Pill" — Cancel anywhere
-/// returns to the list (no keychain writes, no spec writes).
+/// Add-provider flow (plan Task 16, now a PUSHED page per Task 18c): grouped
+/// template catalog + dead-simple custom discovery. One enum-driven state
+/// machine; ALL field state lives on the flow itself so its internal Back
+/// always preserves entries. Nothing persists until the final "Add to Pill" —
+/// Cancel anywhere returns to the list (no keychain writes, no spec writes).
+/// Exception by design: the Claude walkthrough writes nothing either — its
+/// "add" is just the two visibility setters (path-A facade).
 ///
 /// PRIVACY: the pasted key lives only in @State and flows only to
-/// ProviderProbe.discover and ProviderKeyStore.save. Never logged, never in
-/// error text, never in the spec.
+/// ProviderProbe.discover / OpenAISpendAdapter.fetchValue (verification) and
+/// ProviderKeyStore.save. Never logged, never in error text, never in the
+/// spec.
 struct AddProviderFlow: View {
     let specStore: ProviderSpecStore
     let keyStore: ProviderKeyStore
     @ObservedObject var providersModel: ProvidersModel
+    /// Live "both Claude rows hidden" from ProvidersTabView — the catalog
+    /// offers the Claude entry only while it is removed.
+    let claudeRemoved: () -> Bool
+    /// Read-only Claude Code credential presence check, injected from the
+    /// AppDelegate wiring (the SAME loader the smart first-launch default
+    /// uses — this view builds no keychain machinery of its own).
+    let claudeCheck: () -> Bool
+    /// Path-A "add": flips both Claude visibilities back to .pinned.
+    let onClaudeConnected: () -> Void
     /// Navigates back to the settings list (replaces the sheet's dismiss).
     let onClose: () -> Void
 
     /// ④ pickSource → ④b presetForm | ⑤ customForm → ⑤b probing →
-    /// ⑥ pickField → ⑦ finish.
+    /// ⑥ pickField → ⑦ finish. Side paths off ④: claudeWalkthrough
+    /// (path-A facade) and spendForm (OpenAI native adapter).
     private enum Step {
         case pickSource
-        case presetForm(ProviderPresets.Preset)
+        case presetForm(ProviderTemplate)
         case customForm
         case probing
         case pickField([DiscoveredField])
         case finish(DiscoveredField)
+        case claudeWalkthrough
+        case spendForm(ProviderTemplate)
     }
 
     @State private var step: Step = .pickSource
@@ -37,12 +53,26 @@ struct AddProviderFlow: View {
     @State private var presetKey = ""
 
     // ⑤ custom path — kept here (not per-screen) so Back preserves entries.
+    // pickedGuidedName mirrors pickedPresetName: re-picking the same guided
+    // template keeps the user's entries; a different one re-applies its
+    // prefill, and "Custom…" after a guided pick starts blank.
     @State private var urlText = ""
     @State private var keyText = ""
     @State private var headerName = "Authorization"
     @State private var headerTemplate = "Bearer {key}"
     @State private var probeError: String?
     @State private var probeTask: Task<Void, Never>?
+    @State private var pickedGuidedName: String?
+    @State private var guidedCurrencyCode: String?
+
+    // OpenAI spend path (④ → spendForm). The admin key flows ONLY to the
+    // verification fetch and keyStore.save.
+    @State private var spendName = "OpenAI"
+    @State private var spendKey = ""
+    @State private var spendWarnText = ""
+    @State private var spendVerifying = false
+    @State private var spendError: String?
+    @State private var spendTask: Task<Void, Never>?
 
     // ⑥ + ⑦
     @State private var discovered: [DiscoveredField] = []
@@ -65,10 +95,16 @@ struct AddProviderFlow: View {
     init(specStore: ProviderSpecStore,
          keyStore: ProviderKeyStore,
          providersModel: ProvidersModel,
+         claudeRemoved: @escaping () -> Bool,
+         claudeCheck: @escaping () -> Bool,
+         onClaudeConnected: @escaping () -> Void,
          onClose: @escaping () -> Void) {
         self.specStore = specStore
         self.keyStore = keyStore
         self.providersModel = providersModel
+        self.claudeRemoved = claudeRemoved
+        self.claudeCheck = claudeCheck
+        self.onClaudeConnected = onClaudeConnected
         self.onClose = onClose
         let c = Color(themeHex: Self.defaultAccent)
         _color = State(initialValue: c)
@@ -92,9 +128,22 @@ struct AddProviderFlow: View {
                 } buttons: { buttons }
             case .finish:
                 SettingsPage { finishForm } buttons: { buttons }
+            case .claudeWalkthrough:
+                SettingsPage {
+                    ClaudeWalkthroughPage(
+                        claudeCheck: claudeCheck,
+                        onConnected: onClaudeConnected,
+                        onClose: onClose
+                    )
+                } buttons: { buttons }
+            case .spendForm(let template):
+                SettingsPage { spendForm(template) } buttons: { buttons }
             }
         }
-        .onDisappear { probeTask?.cancel() }
+        .onDisappear {
+            probeTask?.cancel()
+            spendTask?.cancel()
+        }
     }
 
     // MARK: buttons (trailing capsules; primary = default action)
@@ -144,36 +193,153 @@ struct AddProviderFlow: View {
             Button("Add to Pill") { addCustom(field) }
                 .buttonStyle(AccentCapsuleButtonStyle())
                 .keyboardShortcut(.defaultAction)
+        case .claudeWalkthrough:
+            Button("Back") { step = .pickSource }
+                .buttonStyle(CapsuleButtonStyle())
+        case .spendForm(let template):
+            Button("Back") {
+                spendTask?.cancel()
+                spendVerifying = false
+                step = .pickSource
+            }
+            .buttonStyle(CapsuleButtonStyle())
+            Button("Add to Pill") { addSpend(template) }
+                .buttonStyle(AccentCapsuleButtonStyle())
+                .keyboardShortcut(.defaultAction)
+                .disabled(trimmed(spendKey).isEmpty || spendVerifying)
         }
     }
 
-    // MARK: ④ source picker
+    // MARK: ④ source picker (grouped catalog)
+
+    /// Plans group, minus the Claude entry while Claude is already present
+    /// (path-A: the catalog offers Claude only after Remove).
+    private var planTemplates: [ProviderTemplate] {
+        TemplateCatalog.all.filter { template in
+            guard template.group == .plans else { return false }
+            if case .claudePlan = template.kind { return claudeRemoved() }
+            return true
+        }
+    }
+
+    private var balanceTemplates: [ProviderTemplate] {
+        TemplateCatalog.all.filter { $0.group == .balances }
+    }
 
     @ViewBuilder
     private var sourcePicker: some View {
+        CardHeader("PLANS")
+        SettingsCard { catalogRows(planTemplates) }
+        CardHeader("API BALANCES & SPEND")
+        SettingsCard { catalogRows(balanceTemplates) }
         SettingsCard {
-            ForEach(ProviderPresets.all, id: \.name) { preset in
-                sourceRow(
-                    title: preset.name,
-                    subtitle: "verified preset — just needs your key"
-                ) {
-                    if pickedPresetName != preset.name {
-                        // Fresh preset: prefill from the template.
-                        pickedPresetName = preset.name
-                        presetName = preset.make().displayName
-                        presetKey = ""
-                    }
-                    step = .presetForm(preset)
-                }
-                CardDivider()
-            }
             sourceRow(
                 title: "Custom…",
                 subtitle: "any provider with a JSON endpoint"
             ) {
-                step = .customForm
+                pickCustom()
             }
         }
+    }
+
+    @ViewBuilder
+    private func catalogRows(_ templates: [ProviderTemplate]) -> some View {
+        ForEach(Array(templates.enumerated()), id: \.element.name) { i, template in
+            catalogRow(template)
+            if i < templates.count - 1 {
+                CardDivider()
+            }
+        }
+    }
+
+    /// Catalog row: the navigation tap covers name/subtitle/chevron only —
+    /// the key-link icon is its own tap target (NOT nested in the row button).
+    private func catalogRow(_ template: ProviderTemplate) -> some View {
+        HStack(spacing: 8) {
+            sourceRow(title: template.name, subtitle: template.subtitle) {
+                pick(template)
+            }
+            if let url = template.keyURL {
+                Button {
+                    NSWorkspace.shared.open(url)
+                } label: {
+                    Image(systemName: "arrow.up.right.square")
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .help("Get your key")
+                .accessibilityLabel("Get your key for \(template.name)")
+            }
+        }
+    }
+
+    private func pick(_ template: ProviderTemplate) {
+        switch template.kind {
+        case .full(let make):
+            if pickedPresetName != template.name {
+                // Fresh template: prefill display name from spec.
+                pickedPresetName = template.name
+                presetName = make().displayName
+                presetKey = ""
+                saveErrorText = nil
+            }
+            step = .presetForm(template)
+        case .guided(let prefill):
+            if pickedGuidedName != template.name {
+                pickedGuidedName = template.name
+                applyGuidedPrefill(prefill)
+            }
+            step = .customForm
+        case .claudePlan:
+            step = .claudeWalkthrough
+        case .openAISpend:
+            saveErrorText = nil
+            spendError = nil
+            step = .spendForm(template)
+        }
+    }
+
+    /// Guided templates ride the EXISTING custom flow (probe → pick-a-number
+    /// → finish) with the fields pre-filled but fully editable.
+    private func applyGuidedPrefill(_ p: ProviderTemplate.GuidedPrefill) {
+        urlText = p.url
+        headerName = p.headerName
+        headerTemplate = p.headerTemplate
+        customName = p.suggestedName
+        showAs = p.valueKind
+        guidedCurrencyCode = p.currencyCode
+        keyText = ""
+        warnText = ""
+        probeError = nil
+        saveErrorText = nil
+        discovered = []
+        selected = nil
+        // Non-default auth is the template's whole trick (z.ai raw token) —
+        // open Advanced so the user sees what will be sent.
+        advancedExpanded = p.headerName != "Authorization"
+            || p.headerTemplate != "Bearer {key}"
+    }
+
+    /// "Custom…" after a guided pick starts blank; re-entering plain custom
+    /// keeps the user's entries (existing Back-preserves semantics).
+    private func pickCustom() {
+        if pickedGuidedName != nil {
+            pickedGuidedName = nil
+            urlText = ""
+            keyText = ""
+            headerName = "Authorization"
+            headerTemplate = "Bearer {key}"
+            customName = ""
+            showAs = .currency
+            guidedCurrencyCode = nil
+            warnText = ""
+            probeError = nil
+            saveErrorText = nil
+            discovered = []
+            selected = nil
+            advancedExpanded = false
+        }
+        step = .customForm
     }
 
     private func sourceRow(title: String, subtitle: String,
@@ -197,11 +363,27 @@ struct AddProviderFlow: View {
         .buttonStyle(.plain)
     }
 
+    /// "Get your key →" link shown above preset/spend forms.
+    private func keyLink(_ url: URL) -> some View {
+        Button {
+            NSWorkspace.shared.open(url)
+        } label: {
+            Label("Get your key", systemImage: "arrow.up.right.square")
+                .font(.caption)
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(Color.accentColor)
+        .padding(.leading, 14)
+    }
+
     // MARK: ④b preset form
 
     @ViewBuilder
-    private func presetForm(_ preset: ProviderPresets.Preset) -> some View {
+    private func presetForm(_ preset: ProviderTemplate) -> some View {
         CardHeader(preset.name)
+        if let url = preset.keyURL {
+            keyLink(url)
+        }
         SettingsCard {
             labeledRow("Name") {
                 TextField("Name", text: $presetName)
@@ -222,8 +404,9 @@ struct AddProviderFlow: View {
         }
     }
 
-    private func addPreset(_ preset: ProviderPresets.Preset) {
-        var spec = preset.make()
+    private func addPreset(_ preset: ProviderTemplate) {
+        guard case .full(let make) = preset.kind else { return }
+        var spec = make()
         let name = trimmed(presetName)
         if !name.isEmpty { spec.displayName = name }
         finishAdd(spec: spec, key: presetKey)
@@ -486,7 +669,9 @@ struct AddProviderFlow: View {
             subtractPath: nil,
             scale: 1,
             valueKind: showAs,
-            currencyCode: showAs == .currency ? "USD" : nil,
+            // Guided templates may carry their own currency; plain custom
+            // keeps the 1.0 USD default.
+            currencyCode: showAs == .currency ? (guidedCurrencyCode ?? "USD") : nil,
             // Empty or unparseable → nil (warning off). Accept a comma decimal.
             warnBelow: Double(
                 trimmed(warnText).replacingOccurrences(of: ",", with: ".")
@@ -495,6 +680,113 @@ struct AddProviderFlow: View {
             accentHex: accentHex
         )
         finishAdd(spec: spec, key: keyText)
+    }
+
+    // MARK: spend form (OpenAI month-to-date, native adapter)
+
+    @ViewBuilder
+    private func spendForm(_ template: ProviderTemplate) -> some View {
+        CardHeader(template.name)
+        if let url = template.keyURL {
+            keyLink(url)
+        }
+        SettingsCard {
+            labeledRow("Name") {
+                TextField("Name", text: $spendName)
+                    .capsuleField()
+                    .frame(maxWidth: 200)
+            }
+            CardDivider()
+            labeledRow("Admin Key") {
+                SecureField("Admin Key", text: $spendKey, prompt: Text("paste key"))
+                    .capsuleField()
+                    .frame(maxWidth: 200)
+            }
+            CardDivider()
+            labeledRow("Warn Above") {
+                HStack(spacing: 4) {
+                    Text("$").foregroundStyle(.secondary)
+                    TextField("none", text: $spendWarnText)
+                        .multilineTextAlignment(.trailing)
+                        .capsuleField()
+                        .frame(width: 80)
+                }
+            }
+        }
+        if spendVerifying {
+            HStack(spacing: 8) {
+                ProgressView().controlSize(.small)
+                Text("Checking that key with OpenAI…")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.leading, 14)
+        } else if let errorText = saveErrorText ?? spendError {
+            CardFooter(text: errorText, color: .red)
+        } else {
+            CardFooter(text: "At or above the warning amount, this row turns amber.")
+        }
+    }
+
+    /// Live verification = one adapter fetch with the final spec; nothing
+    /// persists unless it succeeds. PRIVACY: the admin key flows ONLY to
+    /// OpenAISpendAdapter.fetchValue and (on success) keyStore.save.
+    private func addSpend(_ template: ProviderTemplate) {
+        guard !spendVerifying else { return }
+        spendError = nil
+        saveErrorText = nil
+        let key = trimmed(spendKey)
+        let name = trimmed(spendName)
+        let spec = ProviderSpec(
+            id: UUID(),
+            displayName: name.isEmpty ? "OpenAI" : name,
+            adapter: .openAISpend,
+            // The adapter builds its own request; url/header/valuePath are
+            // carried for bookkeeping only.
+            url: "https://api.openai.com/v1/organization/costs",
+            headerName: "Authorization",
+            headerTemplate: "Bearer {key}",
+            valuePath: "",
+            subtractPath: nil,
+            scale: 1,
+            valueKind: .currency,
+            currencyCode: "USD",
+            // Warn-ABOVE for this adapter (the pill flips the comparison);
+            // empty/unparseable/non-positive → off, same clamp as elsewhere.
+            warnBelow: Double(
+                trimmed(spendWarnText).replacingOccurrences(of: ",", with: ".")
+            ).flatMap { $0 > 0 ? $0 : nil },
+            visibility: .pinned
+        )
+        spendVerifying = true
+        spendTask = Task {
+            defer { spendVerifying = false }
+            do {
+                _ = try await OpenAISpendAdapter().fetchValue(spec: spec, key: key)
+                guard !Task.isCancelled else { return }
+                finishAdd(spec: spec, key: key)
+            } catch is CancellationError {
+                // User backed out mid-verify; nothing persisted.
+            } catch let error as FetchError {
+                guard !Task.isCancelled else { return }
+                spendError = Self.spendMessage(for: error)
+            } catch {
+                guard !Task.isCancelled else { return }
+                spendError = "Could not reach that URL."
+            }
+        }
+    }
+
+    /// Spend-path errors: the Costs API needs an ORGANIZATION ADMIN key, and
+    /// a regular project key fails with 401 — say so. Everything else reuses
+    /// the shared message table. Never includes the key or the response.
+    private static func spendMessage(for error: FetchError) -> String {
+        switch error {
+        case .unauthorized, .badResponse(403):
+            return "The key was rejected — note this needs an ORGANIZATION ADMIN key."
+        default:
+            return message(for: error)
+        }
     }
 
     // MARK: shared add path
@@ -555,5 +847,87 @@ struct AddProviderFlow: View {
         }
         let base = host.split(separator: ".").first.map(String.init) ?? host
         return base.capitalized
+    }
+}
+
+// MARK: - Claude walkthrough (path-A facade)
+
+/// The Claude catalog entry's "add" page. No keychain machinery here: the
+/// injected `claudeCheck` is the same read-only credential-presence loader
+/// the smart first-launch default uses. Found (now or on a later check) →
+/// `onConnected` pins both Claude rows, a brief confirmation shows, and the
+/// flow closes. While visible the page re-checks every 5 s; the `.task`
+/// loop is cancelled by SwiftUI the moment the page leaves the hierarchy.
+private struct ClaudeWalkthroughPage: View {
+    let claudeCheck: () -> Bool
+    let onConnected: () -> Void
+    let onClose: () -> Void
+
+    @State private var connected = false
+    @State private var manualCheckFailed = false
+    @State private var dismissTask: Task<Void, Never>?
+
+    /// Verified 2026-06-13: responds 200 (redirects to
+    /// claude.com/product/claude-code), so no docs fallback needed.
+    private static let claudeCodeURL = URL(string: "https://claude.com/claude-code")!
+
+    var body: some View {
+        Group {
+            if connected {
+                VStack(spacing: 10) {
+                    Image(systemName: "checkmark.circle")
+                        .font(.system(size: 28, weight: .light))
+                        .foregroundStyle(Color.accentColor)
+                    Text("Connected — Claude is in your pill.")
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 30)
+            } else {
+                CardHeader("Claude plan")
+                SettingsCard {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("Usage Pill reads the sign-in that Claude Code already has — it never sees your password and never writes anything.")
+                            .fixedSize(horizontal: false, vertical: true)
+                        HStack(spacing: 8) {
+                            Button("Get Claude Code") {
+                                NSWorkspace.shared.open(Self.claudeCodeURL)
+                            }
+                            .buttonStyle(CapsuleButtonStyle())
+                            Button("Check again") { check(manual: true) }
+                                .buttonStyle(AccentCapsuleButtonStyle())
+                        }
+                    }
+                    .padding(.vertical, 9)
+                }
+                if manualCheckFailed {
+                    CardFooter(text: "No Claude Code sign-in found yet.")
+                }
+            }
+        }
+        .onAppear { check(manual: false) } // already signed in → instant add
+        // NO polling loop here: a denied keychain ACL re-prompts on every
+        // SecItemCopyMatching call against another app's item, so automatic
+        // rechecks are a prompt-storm vector (the v1.0 failure class).
+        // The "Check again" button above gives the user explicit one-shot
+        // control; the 1 s success-dismiss task below is the only timer.
+        .onDisappear { dismissTask?.cancel() }
+    }
+
+    /// Auto checks are silent on failure; only an explicit "Check again"
+    /// earns the inline "not found yet" note.
+    private func check(manual: Bool) {
+        guard !connected else { return }
+        if claudeCheck() {
+            connected = true
+            onConnected() // both Claude rows → .pinned (instant data)
+            dismissTask = Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 1_000_000_000)
+                guard !Task.isCancelled else { return }
+                onClose()
+            }
+        } else if manual {
+            manualCheckFailed = true
+        }
     }
 }

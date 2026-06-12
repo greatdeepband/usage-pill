@@ -36,18 +36,46 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let keyStore = ProviderKeyStore()
         let specStore = ProviderSpecStore()
         let engine = ProviderEngine()
+        let spendAdapter = OpenAISpendAdapter()
         providersModel = ProvidersModel(
             specStore: specStore,
             keyLookup: { keyStore.loadKey(for: $0) },
-            makeFetch: { spec, key in { try await engine.fetchValue(spec: spec, key: key) } }
+            makeFetch: { spec, key in
+                // Native adapters route here; everything else through the engine.
+                // (ProviderEngine itself refuses non-generic specs — defense in depth.)
+                switch spec.adapter {
+                case .openAISpend: return { try await spendAdapter.fetchValue(spec: spec, key: key) }
+                default: return { try await engine.fetchValue(spec: spec, key: key) }
+                }
+            }
         )
 
+        // Smart first-launch default (plan Task 3): decide whether this is the
+        // very first run BEFORE importLegacyIfNeeded — that call sets the
+        // didImportV1 marker, so the capture must precede it.
+        let wasFirstRun = UserDefaults.standard.object(forKey: ThemeSettings.didImportV1Key) == nil
         // One-shot import of the v1 app's appearance settings, BEFORE the
         // store reads our domain. Read-only against the legacy domain.
         ThemeSettings.importLegacyIfNeeded(
             from: UserDefaults(suiteName: ThemeSettings.legacyV1Domain),
             into: .standard
         )
+        if wasFirstRun {
+            // One-shot synchronous credential presence check via the SAME
+            // read-only loader CredentialsCache wraps — this is the launch
+            // keychain read 1.0 already performs (one documented Always Allow
+            // at most; absence throws CredentialsError). Token found → write
+            // nothing, the defaults already mean .pinned. Not found/unreadable
+            // → start with both Claude rows hidden, persisted through
+            // ThemeSettings' own key constants BEFORE ThemeStore loads them,
+            // so a non-Claude user gets the empty-capsule hint instead of two
+            // dead bars.
+            if (try? provider.load()) == nil {
+                let hidden = ProviderSpec.Visibility.hidden.rawValue
+                UserDefaults.standard.set(hidden, forKey: ThemeSettings.sessionVisibilityKey)
+                UserDefaults.standard.set(hidden, forKey: ThemeSettings.weekVisibilityKey)
+            }
+        }
         themeStore = ThemeStore()
         let profileFetcher = ProfileFetcher(cache: cache)
         identityModel = IdentityModel(cache: cache, fetchProfile: { try await profileFetcher.fetch() })
@@ -55,7 +83,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             themeStore: themeStore,
             providersModel: providersModel,
             specStore: specStore,
-            keyStore: keyStore
+            keyStore: keyStore,
+            // Walkthrough credential check: the SAME read-only loader the
+            // smart default used above — presence only, nothing retained.
+            claudeCheck: { (try? provider.load()) != nil }
         )
 
         panel = PillPanel()

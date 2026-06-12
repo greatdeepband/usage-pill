@@ -93,6 +93,32 @@ guided flow can chart it — no configuration files:
 never logged, never included in error messages, never synced anywhere. The
 pasted key travels exactly two places: the probe request and the keychain.
 
+### Template catalog
+
+Settings → **Add Provider** opens a grouped catalog of pre-built entries —
+select one and the form fills itself in; adding is always live-verified.
+Every entry includes a **Get your key →** link to the provider's key page.
+
+**Plans**
+- **Claude** — uses your existing Claude Code sign-in; fresh installs are
+  detected automatically, with a guided walkthrough for anything else.
+- **z.ai GLM 5-hour** — pre-fills the quota endpoint and raw-token header;
+  add once for the 5-hour window.
+- **z.ai GLM weekly** — same endpoint, weekly quota field; add alongside the
+  5-hour entry to chart both.
+- **MiniMax token plan** — pre-fills `token_plan/remains`; pick your
+  remaining-quota field for a perfect drain bar.
+
+**API balances & spend**
+- **DeepSeek** — remaining USD credit balance as a drain bar.
+- **OpenRouter** — pre-fills the credits endpoint and picks the true
+  remaining-credits field (not lifetime purchased), so you get a real drain bar.
+- **MiniMax balance** — pre-fills `user/balance`; pick the available-balance
+  field.
+- **OpenAI month-to-date spend** — month-to-date spend via the billing usage
+  API (needs an org admin key); uses a warn-ABOVE threshold and skips the
+  drain bar because spend grows rather than drains.
+
 ### Recipes
 
 **OpenRouter** — URL `https://openrouter.ai/api/v1/credits`, header defaults
@@ -117,6 +143,11 @@ provider twice (e.g. "GLM 5h" and "GLM week") to chart both.
 
 `scripts/probe-providers.sh` prints these endpoints' raw responses (no secret
 values) if you want to inspect the JSON shape first.
+
+---
+
+**Why no ChatGPT/Codex plan?** OpenAI exposes no public usage API for ChatGPT
+subscriptions — the moment one exists, it becomes a template.
 
 ## Security & privacy
 

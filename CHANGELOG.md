@@ -1,5 +1,17 @@
 # Changelog
 
+## v1.1.0 — 2026-06-13
+
+The catalog release: Add Provider now opens a grouped template catalog —
+Plans (Claude, z.ai GLM 5-hour & weekly, MiniMax token plan) and API
+balances & spend (DeepSeek, OpenRouter with true remaining credits,
+MiniMax balance, OpenAI month-to-date spend). Every entry pre-fills what's
+known, links to the provider's key page, and is live-verified when you add
+it. Claude itself joined the catalog: fresh installs detect your Claude
+Code sign-in automatically, and a guided walkthrough covers the rest.
+OpenAI spend rows use warn-ABOVE thresholds and skip the drain bar (spend
+grows). Existing setups upgrade with zero changes.
+
 ## v1.0.0 — 2026-06-13
 
 First public release of Usage Pill — an always-on-top macOS widget showing
