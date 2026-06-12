@@ -293,6 +293,8 @@ struct AddProviderFlow: View {
         case .claudePlan:
             step = .claudeWalkthrough
         case .openAISpend:
+            saveErrorText = nil
+            spendError = nil
             step = .spendForm(template)
         }
     }
@@ -904,15 +906,11 @@ private struct ClaudeWalkthroughPage: View {
             }
         }
         .onAppear { check(manual: false) } // already signed in → instant add
-        .task {
-            // 5 s auto-recheck while the page is visible. SwiftUI cancels
-            // this task on removal, so it can never outlive the page.
-            while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: 5_000_000_000)
-                guard !Task.isCancelled else { return }
-                check(manual: false)
-            }
-        }
+        // NO polling loop here: a denied keychain ACL re-prompts on every
+        // SecItemCopyMatching call against another app's item, so automatic
+        // rechecks are a prompt-storm vector (the v1.0 failure class).
+        // The "Check again" button above gives the user explicit one-shot
+        // control; the 1 s success-dismiss task below is the only timer.
         .onDisappear { dismissTask?.cancel() }
     }
 

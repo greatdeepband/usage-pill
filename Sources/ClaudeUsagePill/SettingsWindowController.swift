@@ -8,7 +8,7 @@ import UsageCore
 /// `.preferredContentSize` sizing so the window hugs the current page; the
 /// window title follows the page via the onTitle relay.
 @MainActor
-final class SettingsWindowController {
+final class SettingsWindowController: NSObject, NSWindowDelegate {
     private var window: NSWindow?
     private let themeStore: ThemeStore
     private let providersModel: ProvidersModel
@@ -49,6 +49,7 @@ final class SettingsWindowController {
         w.styleMask = [.titled, .closable] // settings windows aren't resizable
         w.title = "Settings"
         w.isReleasedWhenClosed = false
+        w.delegate = self
         // Direction-2 ("soft like the pill"): the white-6% cards and
         // black-30% capsule fields are designed against the pill's dark
         // palette — pin the content to dark so the design reads in any
@@ -58,6 +59,15 @@ final class SettingsWindowController {
         window = w
         w.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
+    }
+
+    nonisolated func windowWillClose(_ notification: Notification) {
+        // Tear the SwiftUI hierarchy down NOW so .task/.onDisappear cancellation
+        // actually runs — otherwise probe/walkthrough tasks survive into a hidden
+        // window (hostile review, 1.1).
+        MainActor.assumeIsolated {
+            window?.contentViewController = nil
+        }
     }
 
     private func makeHost() -> NSHostingController<ProvidersTabView> {
