@@ -17,6 +17,7 @@ struct ProvidersTabView: View {
 
     @State private var specs: [ProviderSpec]
     @State private var showClaudeSheet = false
+    @State private var showAddSheet = false
     @State private var editingSpec: ProviderSpec?
 
     init(themeStore: ThemeStore,
@@ -48,6 +49,18 @@ struct ProvidersTabView: View {
         .frame(width: 380)
         .sheet(isPresented: $showClaudeSheet) {
             ClaudeDetailSheet(themeStore: themeStore)
+        }
+        .sheet(isPresented: $showAddSheet, onDismiss: {
+            // AddProviderSheet persists the new spec itself (key first, then
+            // spec → reload + refreshAll); re-sync the local copy. Harmless
+            // on cancel — the store is unchanged.
+            specs = specStore.load()
+        }) {
+            AddProviderSheet(
+                specStore: specStore,
+                keyStore: keyStore,
+                providersModel: providersModel
+            )
         }
         .sheet(item: $editingSpec) { spec in
             ProviderDetailSheet(
@@ -108,14 +121,11 @@ struct ProvidersTabView: View {
     }
 
     private var addRow: some View {
-        // TODO(Task 16): present AddProviderSheet (preset catalog + custom
-        // provider form). Disabled until then per plan.
         Button {
-            // Wired up in Task 16.
+            showAddSheet = true
         } label: {
             Label("Add Provider…", systemImage: "plus")
         }
-        .disabled(true)
     }
 
     private func rowText(title: String, subtitle: String) -> some View {
