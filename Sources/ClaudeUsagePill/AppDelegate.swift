@@ -1,10 +1,22 @@
 import AppKit
 import Combine
+import os
 import SwiftUI
 import UsageCore
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
+    /// Thread-safe snapshot of `ThemeStore.authMode` for the `@Sendable`
+    /// CredentialsCache load closure, which may run OFF the main actor while
+    /// `authMode` is @MainActor-isolated. `OSAllocatedUnfairLock` is `Sendable`
+    /// and guarantees consistent (non-torn) reads; the value is kept current by
+    /// a main-actor Combine sink on `themeStore.$authMode`. We snapshot rather
+    /// than capture `themeStore` directly because a @Sendable closure cannot
+    /// touch a @MainActor object without a data race / hop. Chosen over a bare
+    /// `nonisolated(unsafe) var` (which a String can tear under concurrent
+    /// access) and over a full Mutex (heavier; this is the simplest correct fit
+    /// for the macOS 14 target).
+    private let authModeSnapshot = OSAllocatedUnfairLock(initialState: "auto")
     private var panel: PillPanel!
     private var model: UsageModel!
     private var providersModel: ProvidersModel!
@@ -29,9 +41,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let provider = KeychainCredentialsProvider()
-        let cache = CredentialsCache(load: { try provider.load() })
-        let fetcher = UsageFetcher(cache: cache)
-        model = UsageModel(fetch: { try await fetcher.fetch() })
 
         let keyStore = ProviderKeyStore()
         let specStore = ProviderSpecStore()
@@ -77,6 +86,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
         themeStore = ThemeStore()
+
+        // Branch the Claude credential SOURCE on the CURRENT authMode at every
+        // load. The load closure is @Sendable and may run off the main actor,
+        // so it reads `authModeSnapshot` (a Sendable lock-backed holder) rather
+        // than capturing the @MainActor themeStore. Seed it now and keep it
+        // current via a main-actor sink on $authMode.
+        let currentAuthMode = themeStore.authMode
+        authModeSnapshot.withLock { $0 = currentAuthMode }
+        themeStore.$authMode
+            .receive(on: RunLoop.main)
+            .sink { [authModeSnapshot] mode in authModeSnapshot.withLock { $0 = mode } }
+            .store(in: &cancellables)
+
+        let claudeTokenStore = ClaudeTokenStore(keyStore: keyStore)
+        let cache = CredentialsCache(load: { [authModeSnapshot] in
+            // token mode → our OWN keychain item (silent, prompt-free); NEVER
+            // touches Claude Code's rotating item. auto mode → unchanged.
+            if authModeSnapshot.withLock({ $0 }) == "token" {
+                guard let t = claudeTokenStore.token() else { throw CredentialsError.notFound }
+                return OAuthCredentials(accessToken: t, expiresAt: nil)
+            }
+            return try provider.load()
+        })
+        let fetcher = UsageFetcher(cache: cache)
+        model = UsageModel(fetch: { try await fetcher.fetch() })
+
         let profileFetcher = ProfileFetcher(cache: cache)
         identityModel = IdentityModel(cache: cache, fetchProfile: { try await profileFetcher.fetch() })
         settingsController = SettingsWindowController(
