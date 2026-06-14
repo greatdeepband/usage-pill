@@ -1,5 +1,20 @@
 # Changelog
 
+## v1.2.0 — 2026-06-14
+
+No more keychain password prompts. Claude Code rotates its OAuth token about
+once an hour, and each rotation resets the macOS keychain item's access list —
+silently revoking the "Always Allow" you granted, so the password prompt kept
+coming back on every wake. That's Claude Code's behavior and can't be fixed
+from our side (a paid Apple Developer certificate wouldn't change it either).
+
+The fix: Claude can now connect with a **long-lived token** instead. In
+Settings → Claude → Connection, choose "Use a token", run `claude setup-token`
+in Terminal, and paste the result. Usage Pill stores it in its own keychain
+item (silent, prompt-free, untouched by Claude Code's rotations). The
+zero-setup auto-detect remains the default for anyone who doesn't mind the
+occasional prompt.
+
 ## v1.1.0 — 2026-06-13
 
 The catalog release: Add Provider now opens a grouped template catalog —
