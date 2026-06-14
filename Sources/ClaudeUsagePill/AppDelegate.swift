@@ -114,11 +114,43 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let profileFetcher = ProfileFetcher(cache: cache)
         identityModel = IdentityModel(cache: cache, fetchProfile: { try await profileFetcher.fetch() })
+
+        // Live token verification for the Connection / Token page: ONE usage
+        // fetch with the pasted token, bypassing the shared cache and the
+        // authMode branch entirely. A throwaway CredentialsCache fed a fixed
+        // token (expiresAt nil) routes the pasted token through the SAME usage
+        // endpoint the app uses, so a bad paste is caught immediately. The
+        // token flows only here and to ClaudeTokenStore.save (Token page) —
+        // never logged, never retained. NOTE: capture nothing @MainActor; the
+        // closure is plain async and the inner cache/fetcher are Sendable.
+        let claudeVerify: @Sendable (String) async -> Result<Void, FetchError> = { token in
+            let oneShot = CredentialsCache(
+                load: { OAuthCredentials(accessToken: token, expiresAt: nil) }
+            )
+            let verifyFetcher = UsageFetcher(cache: oneShot)
+            do {
+                _ = try await verifyFetcher.fetch()
+                return .success(())
+            } catch let e as FetchError {
+                return .failure(e)
+            } catch {
+                return .failure(.network)
+            }
+        }
+
         settingsController = SettingsWindowController(
             themeStore: themeStore,
             providersModel: providersModel,
             specStore: specStore,
             keyStore: keyStore,
+            claudeTokenStore: claudeTokenStore,
+            claudeVerify: claudeVerify,
+            // Refresh the Claude model right after a token connect / switch so
+            // the pill reflects the new credential source without waiting for
+            // the next poll tick.
+            onClaudeConnected: { [weak self] in
+                Task { @MainActor in await self?.model.refresh() }
+            },
             // Walkthrough credential check: the SAME read-only loader the
             // smart default used above — presence only, nothing retained.
             claudeCheck: { (try? provider.load()) != nil }

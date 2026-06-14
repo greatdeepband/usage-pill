@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 import UsageCore
 
@@ -21,6 +22,12 @@ struct ProvidersTabView: View {
     @ObservedObject var providersModel: ProvidersModel
     let specStore: ProviderSpecStore
     let keyStore: ProviderKeyStore
+    /// App-owned Claude token store (Connection section / Token page).
+    let claudeTokenStore: ClaudeTokenStore
+    /// One usage fetch with a pasted token (Token page live verification).
+    let claudeVerify: @Sendable (String) async -> Result<Void, FetchError>
+    /// Refreshes the Claude model after a token connect / switch-to-auto.
+    let onClaudeConnected: () -> Void
     /// Read-only Claude Code credential presence check for the add flow's
     /// walkthrough page — injected from the AppDelegate wiring so no view
     /// builds keychain machinery of its own.
@@ -31,6 +38,7 @@ struct ProvidersTabView: View {
     enum Page: Equatable {
         case list
         case claude
+        case claudeToken
         case provider(ProviderSpec)
         case addFlow
     }
@@ -42,12 +50,18 @@ struct ProvidersTabView: View {
          providersModel: ProvidersModel,
          specStore: ProviderSpecStore,
          keyStore: ProviderKeyStore,
+         claudeTokenStore: ClaudeTokenStore,
+         claudeVerify: @escaping @Sendable (String) async -> Result<Void, FetchError>,
+         onClaudeConnected: @escaping () -> Void,
          claudeCheck: @escaping () -> Bool,
          onTitle: @escaping (String) -> Void = { _ in }) {
         self.themeStore = themeStore
         self.providersModel = providersModel
         self.specStore = specStore
         self.keyStore = keyStore
+        self.claudeTokenStore = claudeTokenStore
+        self.claudeVerify = claudeVerify
+        self.onClaudeConnected = onClaudeConnected
         self.claudeCheck = claudeCheck
         self.onTitle = onTitle
         _specs = State(initialValue: specStore.load())
@@ -60,9 +74,25 @@ struct ProvidersTabView: View {
                 listPage
                     .transition(Self.rootTransition)
             case .claude:
-                ClaudeSettingsPage(themeStore: themeStore) {
-                    navigate(to: .list)
-                }
+                ClaudeSettingsPage(
+                    themeStore: themeStore,
+                    claudeTokenStore: claudeTokenStore,
+                    onUseToken: { navigate(to: .claudeToken) },
+                    onSwitchedToAuto: onClaudeConnected,
+                    onClose: { navigate(to: .list) }
+                )
+                .transition(Self.detailTransition)
+            case .claudeToken:
+                ClaudeTokenPage(
+                    themeStore: themeStore,
+                    claudeTokenStore: claudeTokenStore,
+                    claudeVerify: claudeVerify,
+                    onConnected: onClaudeConnected,
+                    // Connected → return to the Claude page (now in token mode),
+                    // NOT all the way to the list, so the user sees the result.
+                    onDone: { navigate(to: .claude) },
+                    onBack: { navigate(to: .claude) }
+                )
                 .transition(Self.detailTransition)
             case .provider(let spec):
                 ProviderSettingsPage(
@@ -133,6 +163,7 @@ struct ProvidersTabView: View {
         switch page {
         case .list: return "Settings"
         case .claude: return "Claude plan"
+        case .claudeToken: return "Connect with a token"
         case .provider(let spec): return spec.displayName
         case .addFlow: return "Add Provider"
         }
@@ -342,21 +373,35 @@ struct ProvidersTabView: View {
 /// restores it wholesale, while Done simply returns.
 struct ClaudeSettingsPage: View {
     @ObservedObject var themeStore: ThemeStore
+    let claudeTokenStore: ClaudeTokenStore
+    /// Navigate to the Token page ("Use a token" / "Re-paste token").
+    let onUseToken: () -> Void
+    /// Refresh the Claude model after switching back to auto-detect.
+    let onSwitchedToAuto: () -> Void
     let onClose: () -> Void
 
     /// Captured ONCE on page entry (@State keeps the first value across
     /// parent re-renders, which re-init this struct mid-edit).
     @State private var entrySnapshot: ThemeStore.Snapshot
     @State private var confirmRemove = false
+    @State private var confirmSwitchToAuto = false
 
-    init(themeStore: ThemeStore, onClose: @escaping () -> Void) {
+    init(themeStore: ThemeStore,
+         claudeTokenStore: ClaudeTokenStore,
+         onUseToken: @escaping () -> Void,
+         onSwitchedToAuto: @escaping () -> Void,
+         onClose: @escaping () -> Void) {
         self.themeStore = themeStore
+        self.claudeTokenStore = claudeTokenStore
+        self.onUseToken = onUseToken
+        self.onSwitchedToAuto = onSwitchedToAuto
         self.onClose = onClose
         _entrySnapshot = State(initialValue: themeStore.snapshot())
     }
 
     var body: some View {
         SettingsPage {
+            connectionSection
             CardHeader("Palette")
             SettingsCard {
                 swatchRow
@@ -438,6 +483,74 @@ struct ClaudeSettingsPage: View {
         } message: {
             Text("Your Claude Code sign-in is untouched.")
         }
+        .confirmationDialog(
+            "Switch back to auto-detect?",
+            isPresented: $confirmSwitchToAuto
+        ) {
+            Button("Switch back", role: .destructive) {
+                // Delete our stored token, return to reading Claude Code's
+                // sign-in, and refresh so the pill reflects the new source.
+                // Close straight to the list (no snapshot restore) — clearing
+                // the token is irreversible, so Back must NOT revive authMode
+                // "token" against a now-empty keychain item.
+                claudeTokenStore.clear()
+                themeStore.setAuthMode("auto")
+                onSwitchedToAuto()
+                onClose()
+            }
+        } message: {
+            Text("Your saved token will be removed and Usage Pill will read Claude Code's sign-in again (which can prompt for your keychain password).")
+        }
+    }
+
+    // MARK: connection (token escape hatch)
+
+    /// Top-of-page Connection section. Auto mode advertises the token escape
+    /// hatch; token mode shows the masked token + re-paste / switch-back.
+    @ViewBuilder
+    private var connectionSection: some View {
+        CardHeader("Connection")
+        if themeStore.authMode == "token" {
+            SettingsCard {
+                Text("Connected with a long-lived token — no password prompts.")
+                    .font(.callout)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.vertical, 9)
+                if let masked = claudeTokenStore.maskedToken() {
+                    CardDivider()
+                    labeledRow("Token") {
+                        Text(masked)
+                            .font(.system(.callout, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                CardDivider()
+                HStack(spacing: 8) {
+                    Button("Re-paste token") { onUseToken() }
+                        .buttonStyle(CapsuleButtonStyle())
+                    Button("Switch back to auto-detect") { confirmSwitchToAuto = true }
+                        .buttonStyle(CapsuleButtonStyle())
+                    Spacer()
+                }
+                .padding(.vertical, 9)
+            }
+        } else {
+            SettingsCard {
+                Text("Reading your Claude Code sign-in automatically. macOS may occasionally ask for your keychain password when Claude Code refreshes its token.")
+                    .font(.callout)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.vertical, 9)
+                CardDivider()
+                HStack {
+                    Button("Use a token (no more prompts)") { onUseToken() }
+                        .buttonStyle(AccentCapsuleButtonStyle())
+                    Spacer()
+                }
+                .padding(.vertical, 9)
+            }
+        }
     }
 
     private func binding(
@@ -496,6 +609,155 @@ struct ClaudeSettingsPage: View {
             .clipShape(Capsule())
             .overlay(swatchRing(selected: themeStore.palette == .custom))
             Text("Custom").font(.system(size: 9)).foregroundStyle(.secondary)
+        }
+    }
+}
+
+// MARK: - Claude token page (escape hatch)
+
+/// Pushed from the Claude page's Connection section. The user runs
+/// `claude setup-token` in Terminal, pastes the long-lived token here, and we
+/// live-verify it with ONE usage fetch before storing it in OUR keychain item
+/// and flipping authMode to "token" (prompt-free reads from then on).
+///
+/// PRIVACY: the pasted token lives only in @State and flows ONLY to
+/// `claudeVerify` (one fetch) and, on success, `ClaudeTokenStore.save`. It is
+/// never logged, never echoed, never written to defaults; only its masked form
+/// is ever shown (on the Connection section, after saving).
+struct ClaudeTokenPage: View {
+    @ObservedObject var themeStore: ThemeStore
+    let claudeTokenStore: ClaudeTokenStore
+    let claudeVerify: @Sendable (String) async -> Result<Void, FetchError>
+    /// Refresh the Claude model once the token is connected.
+    let onConnected: () -> Void
+    /// Leave the page after the brief "Connected" state.
+    let onDone: () -> Void
+    /// Discard and return without changing anything.
+    let onBack: () -> Void
+
+    @State private var tokenField = ""
+    @State private var verifying = false
+    @State private var connected = false
+    @State private var errorText: String?
+    @State private var verifyTask: Task<Void, Never>?
+
+    private static let setupCommand = "claude setup-token"
+
+    var body: some View {
+        Group {
+            if connected {
+                VStack(spacing: 10) {
+                    Image(systemName: "checkmark.circle")
+                        .font(.system(size: 28, weight: .light))
+                        .foregroundStyle(Color.accentColor)
+                    Text("Connected — no more prompts.")
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 30)
+                .frame(width: SettingsStyle.pageWidth)
+            } else {
+                SettingsPage {
+                    CardHeader("Connect with a token")
+                    SettingsCard {
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("In Terminal, run \u{201C}claude setup-token\u{201D}, copy the token it prints, and paste it below. It's stored only in your keychain — never logged or synced.")
+                                .fixedSize(horizontal: false, vertical: true)
+                            Button {
+                                NSPasteboard.general.clearContents()
+                                NSPasteboard.general.setString(Self.setupCommand, forType: .string)
+                            } label: {
+                                Label("Copy \u{201C}claude setup-token\u{201D}", systemImage: "doc.on.doc")
+                                    .font(.caption)
+                            }
+                            .buttonStyle(.plain)
+                            .foregroundStyle(Color.accentColor)
+                        }
+                        .padding(.vertical, 9)
+                    }
+                    SettingsCard {
+                        labeledRow("Token") {
+                            SecureField("Token", text: $tokenField, prompt: Text("paste the token"))
+                                .capsuleField()
+                                .frame(maxWidth: 200)
+                        }
+                    }
+                    if verifying {
+                        HStack(spacing: 8) {
+                            ProgressView().controlSize(.small)
+                            Text("Checking that token with Anthropic…")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        .padding(.leading, 14)
+                    } else if let errorText {
+                        CardFooter(text: errorText, color: .red)
+                    }
+                } buttons: {
+                    Button("Back") {
+                        verifyTask?.cancel()
+                        onBack()
+                    }
+                    .buttonStyle(CapsuleButtonStyle())
+                    Button("Connect") { connect() }
+                        .buttonStyle(AccentCapsuleButtonStyle())
+                        .keyboardShortcut(.defaultAction)
+                        .disabled(trimmedToken.isEmpty || verifying)
+                }
+            }
+        }
+        .onDisappear { verifyTask?.cancel() }
+    }
+
+    private var trimmedToken: String {
+        tokenField.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// Live-verify → save → switch mode → refresh. Nothing is stored unless the
+    /// fetch succeeds; a keychain write failure leaves the mode on auto.
+    private func connect() {
+        guard !verifying, !connected else { return }
+        let token = trimmedToken
+        guard !token.isEmpty else { return }
+        errorText = nil
+        verifying = true
+        verifyTask = Task { @MainActor in
+            defer { verifying = false }
+            let result = await claudeVerify(token)
+            guard !Task.isCancelled else { return }
+            switch result {
+            case .success:
+                do {
+                    try claudeTokenStore.save(token)
+                } catch {
+                    // Keychain write failed: do NOT switch mode — stay on auto.
+                    errorText = "Could not store the token in your keychain — nothing was changed."
+                    return
+                }
+                themeStore.setAuthMode("token")
+                onConnected()
+                tokenField = ""
+                connected = true
+                Task { @MainActor in
+                    try? await Task.sleep(nanoseconds: 1_200_000_000)
+                    guard !Task.isCancelled else { return }
+                    onDone()
+                }
+            case .failure(let error):
+                errorText = Self.message(for: error)
+            }
+        }
+    }
+
+    /// Plain-language verify errors. NEVER includes the token or the response.
+    private static func message(for error: FetchError) -> String {
+        switch error {
+        case .unauthorized, .badResponse(403):
+            return "That token was rejected — copy the entire output of \u{201C}claude setup-token\u{201D} and try again."
+        case .network:
+            return "Could not reach Anthropic."
+        default:
+            return "Could not verify that token."
         }
     }
 }
