@@ -94,8 +94,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // current via a main-actor sink on $authMode.
         let currentAuthMode = themeStore.authMode
         authModeSnapshot.withLock { $0 = currentAuthMode }
+        // NO .receive(on:) — the snapshot must update SYNCHRONOUSLY with the
+        // authMode change (@Published fires on the main actor where setAuthMode
+        // runs). Deferring it left a one-runloop window where a post-switch
+        // refresh could read the stale mode and touch the wrong keychain item —
+        // exactly the prompt this feature exists to kill (1.2 hostile review).
         themeStore.$authMode
-            .receive(on: RunLoop.main)
             .sink { [authModeSnapshot] mode in authModeSnapshot.withLock { $0 = mode } }
             .store(in: &cancellables)
 
