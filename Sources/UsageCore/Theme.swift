@@ -32,6 +32,7 @@ public struct ThemeSettings {
     public static let sessionVisibilityKey = "claude.sessionVisibility"
     public static let weekVisibilityKey = "claude.weekVisibility"
     public static let redAlertKey = "claude.redAlert90"
+    public static let authModeKey = "claude.authMode"
 
     /// First-run import bookkeeping (plan Task 18): set in OUR domain once the
     /// one-shot copy from the v1 app's domain has run (or been skipped).
@@ -66,7 +67,8 @@ public struct ThemeSettings {
     public func load() -> (theme: Theme, palette: Palette, showIdentity: Bool,
                            sessionVisibility: ProviderSpec.Visibility,
                            weekVisibility: ProviderSpec.Visibility,
-                           redAlert90: Bool) {
+                           redAlert90: Bool,
+                           authMode: String) {
         let showIdentity = defaults.bool(forKey: Self.identityKey) // default false
         // Red alert defaults ON; anything that isn't a Bool (missing, garbage
         // string) also reads as true — the safe state is "warn me".
@@ -77,22 +79,28 @@ public struct ThemeSettings {
             .flatMap(ProviderSpec.Visibility.init(rawValue:)) ?? .pinned
         let weekVisibility = defaults.string(forKey: Self.weekVisibilityKey)
             .flatMap(ProviderSpec.Visibility.init(rawValue:)) ?? .pinned
+        // authMode: valid values are "auto" and "token"; anything else (missing,
+        // garbage) falls back to "auto" — the safe default.
+        let validModes: Set<String> = ["auto", "token"]
+        let authMode = defaults.string(forKey: Self.authModeKey)
+            .flatMap { validModes.contains($0) ? $0 : nil } ?? "auto"
         let palette = defaults.string(forKey: Self.paletteKey).flatMap(Palette.init(rawValue:))
         let session = defaults.string(forKey: Self.sessionKey)
         let week = defaults.string(forKey: Self.weekKey)
         if let palette, let session, let week,
            ThemeColor.parse(session) != nil, ThemeColor.parse(week) != nil {
             return (Theme(sessionHex: session, weekHex: week), palette, showIdentity,
-                    sessionVisibility, weekVisibility, redAlert90)
+                    sessionVisibility, weekVisibility, redAlert90, authMode)
         }
         return (Palette.dusk.preset!, .dusk, showIdentity, sessionVisibility, weekVisibility,
-                redAlert90)
+                redAlert90, authMode)
     }
 
     public func save(theme: Theme, palette: Palette, showIdentity: Bool,
                      sessionVisibility: ProviderSpec.Visibility,
                      weekVisibility: ProviderSpec.Visibility,
-                     redAlert90: Bool) {
+                     redAlert90: Bool,
+                     authMode: String = "auto") {
         defaults.set(theme.sessionHex, forKey: Self.sessionKey)
         defaults.set(theme.weekHex, forKey: Self.weekKey)
         defaults.set(palette.rawValue, forKey: Self.paletteKey)
@@ -100,5 +108,6 @@ public struct ThemeSettings {
         defaults.set(sessionVisibility.rawValue, forKey: Self.sessionVisibilityKey)
         defaults.set(weekVisibility.rawValue, forKey: Self.weekVisibilityKey)
         defaults.set(redAlert90, forKey: Self.redAlertKey)
+        defaults.set(authMode, forKey: Self.authModeKey)
     }
 }

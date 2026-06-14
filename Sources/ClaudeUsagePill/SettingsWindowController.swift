@@ -14,6 +14,12 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
     private let providersModel: ProvidersModel
     private let specStore: ProviderSpecStore
     private let keyStore: ProviderKeyStore
+    /// App-owned Claude token store (Connection section / Token page).
+    private let claudeTokenStore: ClaudeTokenStore
+    /// One usage fetch with a pasted token (Token page live verification).
+    private let claudeVerify: @Sendable (String) async -> Result<Void, FetchError>
+    /// Refreshes the Claude model after a token connect / switch-to-auto.
+    private let onClaudeConnected: () -> Void
     /// Relayed to the add flow's Claude walkthrough (read-only credential
     /// presence check, built once in AppDelegate).
     private let claudeCheck: () -> Bool
@@ -22,11 +28,17 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
          providersModel: ProvidersModel,
          specStore: ProviderSpecStore,
          keyStore: ProviderKeyStore,
+         claudeTokenStore: ClaudeTokenStore,
+         claudeVerify: @escaping @Sendable (String) async -> Result<Void, FetchError>,
+         onClaudeConnected: @escaping () -> Void,
          claudeCheck: @escaping () -> Bool) {
         self.themeStore = themeStore
         self.providersModel = providersModel
         self.specStore = specStore
         self.keyStore = keyStore
+        self.claudeTokenStore = claudeTokenStore
+        self.claudeVerify = claudeVerify
+        self.onClaudeConnected = onClaudeConnected
         self.claudeCheck = claudeCheck
     }
 
@@ -76,6 +88,9 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
             providersModel: providersModel,
             specStore: specStore,
             keyStore: keyStore,
+            claudeTokenStore: claudeTokenStore,
+            claudeVerify: claudeVerify,
+            onClaudeConnected: onClaudeConnected,
             claudeCheck: claudeCheck,
             onTitle: { [weak self] title in self?.window?.title = title }
         ))
