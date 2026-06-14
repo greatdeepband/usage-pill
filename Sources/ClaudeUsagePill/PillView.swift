@@ -226,21 +226,10 @@ struct PillView: View {
     private var footer: some View {
         // Claude-specific hints make no sense when both Claude rows are hidden.
         let claudeVisible = isVisible(theme.sessionVisibility) || isVisible(theme.weekVisibility)
-        let tokenMode = theme.authMode == "token"
         return HStack {
             if claudeVisible, case .stale(let reason) = model.status {
                 if reason == .noCredentials {
-                    // Token mode: our keychain item is missing/cleared.
-                    // Auto mode (unchanged): read Claude Code's sign-in.
-                    Text(tokenMode
-                        ? "Claude token expired — re-paste in Settings"
-                        : "open Claude Code to sign in")
-                        .font(.system(size: 9.5)).foregroundStyle(Dusk.amber.opacity(0.9))
-                } else if reason == .unauthorized, tokenMode {
-                    // A 401 in token mode = the long-lived token expired/revoked.
-                    // (Auto mode's 401 keeps its existing silent-reload behavior
-                    // and surfaces no footer hint here, as before.)
-                    Text("Claude token expired — re-paste in Settings")
+                    Text("open Claude Code to sign in")
                         .font(.system(size: 9.5)).foregroundStyle(Dusk.amber.opacity(0.9))
                 } else if reason == .rateLimited {
                     Text("rate limited — retrying later")

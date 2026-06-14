@@ -10,7 +10,6 @@ final class ThemeStore: ObservableObject {
     @Published var redAlert90: Bool { didSet { persist() } }
     @Published private(set) var sessionVisibility: ProviderSpec.Visibility
     @Published private(set) var weekVisibility: ProviderSpec.Visibility
-    @Published private(set) var authMode: String
 
     private let settings: ThemeSettings
 
@@ -24,7 +23,6 @@ final class ThemeStore: ObservableObject {
         // didSet does not fire during init — no spurious persist()
         showIdentity = loaded.showIdentity
         redAlert90 = loaded.redAlert90
-        authMode = loaded.authMode
     }
 
     // MARK: snapshot / restore (Claude settings page Back semantics)
@@ -38,13 +36,12 @@ final class ThemeStore: ObservableObject {
         let sessionVisibility: ProviderSpec.Visibility
         let weekVisibility: ProviderSpec.Visibility
         let redAlert90: Bool
-        let authMode: String
     }
 
     func snapshot() -> Snapshot {
         Snapshot(theme: theme, palette: palette, showIdentity: showIdentity,
                  sessionVisibility: sessionVisibility, weekVisibility: weekVisibility,
-                 redAlert90: redAlert90, authMode: authMode)
+                 redAlert90: redAlert90)
     }
 
     func restore(_ s: Snapshot) {
@@ -52,17 +49,11 @@ final class ThemeStore: ObservableObject {
         palette = s.palette
         sessionVisibility = s.sessionVisibility
         weekVisibility = s.weekVisibility
-        authMode = s.authMode
         // These two persist via didSet; set them last so the persisted state
         // already contains the restored theme/palette/visibilities.
         showIdentity = s.showIdentity
         redAlert90 = s.redAlert90
         persist() // belt-and-braces if neither didSet fired a change
-    }
-
-    func setAuthMode(_ mode: String) {
-        authMode = mode
-        persist()
     }
 
     func setSessionVisibility(_ v: ProviderSpec.Visibility) {
@@ -99,7 +90,7 @@ final class ThemeStore: ObservableObject {
     private func persist() {
         settings.save(theme: theme, palette: palette, showIdentity: showIdentity,
                       sessionVisibility: sessionVisibility, weekVisibility: weekVisibility,
-                      redAlert90: redAlert90, authMode: authMode)
+                      redAlert90: redAlert90)
     }
 }
 

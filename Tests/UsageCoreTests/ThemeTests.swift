@@ -189,28 +189,3 @@ import Testing
         #expect(loaded.showIdentity == true) // fallback must not reset the toggle
     }
 }
-
-// MARK: - authMode
-
-@Test func authModeDefaultsToAuto() {
-    TestDefaults.withFresh(prefix: "theme-tests-") { d in
-        #expect(ThemeSettings(defaults: d).load().authMode == "auto")
-    }
-}
-
-@Test func authModeRoundTripsToken() {
-    TestDefaults.withFresh(prefix: "theme-tests-") { d in
-        let s = ThemeSettings(defaults: d)
-        s.save(theme: Palette.dusk.preset!, palette: .dusk, showIdentity: false,
-               sessionVisibility: .pinned, weekVisibility: .pinned, redAlert90: true,
-               authMode: "token")
-        #expect(ThemeSettings(defaults: d).load().authMode == "token")
-    }
-}
-
-@Test func corruptAuthModeFallsBackToAuto() {
-    TestDefaults.withFresh(prefix: "theme-tests-") { d in
-        d.set("banana", forKey: ThemeSettings.authModeKey)
-        #expect(ThemeSettings(defaults: d).load().authMode == "auto")
-    }
-}

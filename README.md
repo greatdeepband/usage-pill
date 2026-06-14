@@ -52,16 +52,10 @@ cp -R "build/Usage Pill.app" /Applications/
 open "/Applications/Usage Pill.app"
 ```
 
-On first launch, approve the keychain prompt with **Always Allow**.
-
-> **Keychain prompts keep coming back?** Claude Code rotates its OAuth token
-> about hourly, and each rotation resets the keychain item's access list —
-> revoking your "Always Allow" — so the prompt can return on every wake. This
-> is Claude Code's behaviour and isn't fixable from Usage Pill's side. The cure
-> is a **long-lived token**: open Settings → Claude → Connection → **Use a
-> token**, run `claude setup-token`, and paste the result. Usage Pill then
-> reads its own keychain item (silent, prompt-free) and never touches Claude
-> Code's rotating one. See [Claude](#claude-plan-windows) below.
+On first launch, approve the keychain prompt with **Always Allow**. Thanks to
+the stable signing identity, that decision survives rebuilds — those two
+prompts (cert trust + Always Allow) are the only ones you will ever see.
+Without the cert step, builds are ad-hoc signed and each rebuild re-asks.
 
 ## Providers
 
@@ -74,17 +68,6 @@ exact percentages Claude Code's `/usage` command reports. Access is **strictly
 read-only** — it never writes to the keychain, never refreshes or stores
 tokens elsewhere, and never logs them. API-key billing has no usage windows to
 show, so a Claude Code sign-in is the only supported source.
-
-**Two ways to connect (Settings → Claude → Connection):**
-
-- **Auto-detect** (default) — reads your Claude Code sign-in directly. Zero
-  setup, instant data. Downside: Claude Code's hourly token rotation resets the
-  keychain access list, so macOS may re-ask for your keychain password on wake.
-- **Long-lived token** (no prompts) — run `claude setup-token` in Terminal,
-  paste the token into Usage Pill. It's stored in Usage Pill's own keychain
-  item (silent reads, never logged or synced) and is immune to Claude Code's
-  rotations, so the password prompts stop entirely. If the token ever expires,
-  the pill says so and you re-paste a fresh one.
 
 ### DeepSeek (preset)
 
