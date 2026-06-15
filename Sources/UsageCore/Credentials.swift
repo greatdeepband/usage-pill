@@ -1,6 +1,5 @@
 import Foundation
 import CoreFoundation
-import Security
 
 public struct OAuthCredentials: Equatable, Sendable {
     public let accessToken: String
@@ -65,41 +64,44 @@ public enum CredentialsParser {
 
 /// Read-only access to Claude Code's stored login. NEVER writes or refreshes:
 /// Claude Code rotates refresh tokens; a second refresher would corrupt its login.
+/// The keychain read goes through `/usr/bin/security` (SecurityToolReader) so it
+/// is prompt-free regardless of our signing identity / rebuilds / the rotation.
 public struct KeychainCredentialsProvider: Sendable {
-    public init() {}
+    private let reader: KeychainItemReading
+    private let fileData: @Sendable () -> Data?
+
+    public init(
+        reader: KeychainItemReading = SecurityToolReader(),
+        fileData: @escaping @Sendable () -> Data? = KeychainCredentialsProvider.defaultFileData
+    ) {
+        self.reader = reader
+        self.fileData = fileData
+    }
 
     public func load() throws -> OAuthCredentials {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: "Claude Code-credentials",
-            kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne,
-        ]
-        var item: CFTypeRef?
-        let status = SecItemCopyMatching(query as CFDictionary, &item)
-        if status == errSecSuccess, let data = item as? Data {
-            do {
-                // Keychain-sourced tokens are returned without expiry checking —
-                // Claude Code keeps them fresh; local metadata may be stale.
-                return try CredentialsParser.parse(data)
-            } catch {
-                // Keychain item is present but unreadable (corrupt or wrong shape).
-                // Fall through to the file store; if that is also absent, rethrow
-                // the original .unreadable error — not .notFound — so the caller
-                // knows something was found but could not be parsed.
-                if let creds = try fileCredentials() {
-                    return creds
-                }
-                throw error
-            }
+        // Step 1: try to READ the keychain item via the seam. A read failure
+        // (not-found / denied / tool error / timeout) → file fallback; if that
+        // is absent too, the caller sees .notFound and the UI shows the sign-in
+        // hint. Matches the prior any-non-success branch.
+        let data: Data
+        do {
+            data = try reader.read(service: "Claude Code-credentials")
+        } catch {
+            guard let creds = try fileCredentials() else { throw CredentialsError.notFound }
+            return creds
         }
-        // Any non-success status (not-found, but also user-canceled or ACL-denied)
-        // falls through to the file store; if that is absent too, the caller sees
-        // .notFound and the UI shows the sign-in hint.
-        guard let creds = try fileCredentials() else {
-            throw CredentialsError.notFound
+        // Step 2: bytes are present. Parse them; keychain-sourced tokens are
+        // returned without expiry checking — Claude Code keeps them fresh; local
+        // metadata may be stale.
+        do { return try CredentialsParser.parse(data) }
+        catch {
+            // Present but unparseable (corrupt/wrong shape, or empty bytes) →
+            // fall through to the file store; if that is also absent, rethrow
+            // the original .unreadable error — not .notFound — so the caller
+            // knows something was found but could not be parsed.
+            if let creds = try fileCredentials() { return creds }
+            throw error
         }
-        return creds
     }
 
     /// Parses the file-based credential store and checks that the token has not
@@ -107,7 +109,7 @@ public struct KeychainCredentialsProvider: Sendable {
     /// unreadable or expired (expired → .notFound so the UI shows the sign-in
     /// hint rather than spinning on guaranteed-401 requests).
     private func fileCredentials() throws -> OAuthCredentials? {
-        guard let data = fileCredentialsData() else { return nil }
+        guard let data = fileData() else { return nil }
         let creds = try CredentialsParser.parse(data)
         guard CredentialsParser.isUsable(creds, now: Date()) else {
             throw CredentialsError.notFound
@@ -116,7 +118,7 @@ public struct KeychainCredentialsProvider: Sendable {
     }
 
     /// Contents of the file-based credential store used on some setups, if present.
-    private func fileCredentialsData() -> Data? {
+    public static let defaultFileData: @Sendable () -> Data? = {
         let url = FileManager.default.homeDirectoryForCurrentUser
             .appending(components: ".claude", ".credentials.json")
         return try? Data(contentsOf: url)

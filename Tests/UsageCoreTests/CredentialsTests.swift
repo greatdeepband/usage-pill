@@ -66,3 +66,46 @@ import Testing
     #expect(creds.subscriptionType == nil)
     #expect(creds.rateLimitTier == nil)
 }
+
+// ---------------------------------------------------------------------------
+// KeychainCredentialsProvider.load() fallback matrix — fake reader + injected
+// fileData, fully deterministic (never touches the real ~/.claude store).
+// ---------------------------------------------------------------------------
+
+private struct FakeReader: KeychainItemReading {
+    let result: Result<Data, Error>
+    func read(service: String) throws -> Data { try result.get() }
+}
+private let kcBlob   = Data(#"{"claudeAiOauth":{"accessToken":"sk-kc","expiresAt":99999999999999}}"#.utf8)
+private let fileBlob = Data(#"{"claudeAiOauth":{"accessToken":"sk-file","expiresAt":99999999999999}}"#.utf8)
+private let expired  = Data(#"{"claudeAiOauth":{"accessToken":"sk-old","expiresAt":1}}"#.utf8)
+
+@Test func readerBytesParsedDirectly() throws {
+    let p = KeychainCredentialsProvider(reader: FakeReader(result: .success(kcBlob)), fileData: { nil })
+    #expect(try p.load().accessToken == "sk-kc")
+}
+@Test func unparseableReaderFallsToFileThenUnreadable() throws {
+    let bad = Data("not json".utf8)
+    #expect(throws: CredentialsError.unreadable) {
+        try KeychainCredentialsProvider(reader: FakeReader(result: .success(bad)), fileData: { nil }).load()
+    }
+    let withFile = KeychainCredentialsProvider(reader: FakeReader(result: .success(bad)), fileData: { fileBlob })
+    #expect(try withFile.load().accessToken == "sk-file")
+}
+@Test func emptyButPresentMapsToUnreadable() {   // old SecItemCopyMatching behavior
+    #expect(throws: CredentialsError.unreadable) {
+        try KeychainCredentialsProvider(reader: FakeReader(result: .success(Data())), fileData: { nil }).load()
+    }
+}
+@Test func readerFailureFallsToFileThenNotFound() throws {
+    #expect(throws: CredentialsError.notFound) {
+        try KeychainCredentialsProvider(reader: FakeReader(result: .failure(KeychainReadError.notFound)), fileData: { nil }).load()
+    }
+    let withFile = KeychainCredentialsProvider(reader: FakeReader(result: .failure(KeychainReadError.toolFailed(1))), fileData: { fileBlob })
+    #expect(try withFile.load().accessToken == "sk-file")
+}
+@Test func expiredFileTreatedAsNotFound() {
+    #expect(throws: CredentialsError.notFound) {
+        try KeychainCredentialsProvider(reader: FakeReader(result: .failure(KeychainReadError.notFound)), fileData: { expired }).load()
+    }
+}
