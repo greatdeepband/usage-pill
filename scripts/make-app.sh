@@ -17,6 +17,11 @@ cp scripts/AppIcon.icns "$APP/Contents/Resources/"
 # To sign with a real Apple Developer ID instead (notarizable, Gatekeeper-clean,
 # the most robust option), set DEVELOPER_ID_IDENTITY to your
 # "Developer ID Application: …" identity before running.
+#
+# DO NOT enable App Sandbox (com.apple.security.app-sandbox): it would block both
+# the /usr/bin/security subprocess (used to read Claude's credential prompt-free)
+# AND cross-app keychain access. Hardened runtime (--options runtime) is fine for
+# notarization and does NOT block the subprocess; only App Sandbox does.
 IDENTITY="${DEVELOPER_ID_IDENTITY:-Claude Usage Pill Dev}"
 if ! security find-identity -v -p codesigning 2>/dev/null | grep -qF "\"$IDENTITY\""; then
     echo "ERROR: code-signing identity \"$IDENTITY\" not found." >&2
