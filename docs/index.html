@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Usage Pill — all your AI usage meters in one pill</title>
+<meta name="description" content="A tiny macOS menu-bar pill that shows your Claude plan windows and every API balance at a glance. Always on top. Notarized. Reads silently, never writes your login." />
+<meta name="theme-color" content="#2563EB" />
+<!-- Open Graph / sharing -->
+<meta property="og:type" content="website" />
+<meta property="og:title" content="Usage Pill" />
+<meta property="og:description" content="All your AI usage meters in one pill — always on top." />
+<meta property="og:url" content="https://greatdeepband.github.io/usage-pill/" />
+<!-- Pill favicon, inline so there are no extra files -->
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='4' y='10' width='24' height='12' rx='6' fill='%232563EB'/%3E%3Crect x='4' y='10' width='12' height='12' rx='6' fill='%2360A5FA'/%3E%3C/svg%3E" />
+<style>
+  :root {
+    --bg: #fbfbfd;
+    --surface: #ffffff;
+    --text: #1d1d1f;
+    --muted: #6e6e73;
+    --border: rgba(0, 0, 0, 0.08);
+    --shadow: 0 10px 40px rgba(0, 0, 0, 0.10);
+    --accent: #2563eb;
+    --accent-2: #3b82f6;
+    --amber: #f5a623;
+    --green: #34c759;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0c0c0f;
+      --surface: #16161a;
+      --text: #f5f5f7;
+      --muted: #9a9aa2;
+      --border: rgba(255, 255, 255, 0.10);
+      --shadow: 0 10px 50px rgba(0, 0, 0, 0.55);
+    }
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: var(--accent); text-decoration: none; }
+  .wrap { max-width: 1040px; margin: 0 auto; padding: 0 24px; }
+
+  /* ---------- Hero ---------- */
+  header.hero {
+    position: relative;
+    overflow: hidden;
+    padding: 96px 0 72px;
+    background:
+      radial-gradient(900px 480px at 78% -10%, rgba(59, 130, 246, 0.16), transparent 60%),
+      radial-gradient(700px 400px at 8% 8%, rgba(96, 165, 250, 0.10), transparent 55%);
+  }
+  .hero-grid {
+    display: grid;
+    grid-template-columns: 1.05fr 0.95fr;
+    gap: 48px;
+    align-items: center;
+  }
+  .eyebrow {
+    display: inline-flex; align-items: center; gap: 8px;
+    font-size: 13px; font-weight: 600; letter-spacing: 0.02em;
+    color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 12%, transparent);
+    padding: 6px 12px; border-radius: 999px; margin-bottom: 22px;
+  }
+  .eyebrow .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--green); box-shadow: 0 0 0 3px color-mix(in srgb, var(--green) 25%, transparent); }
+  h1 {
+    font-size: clamp(40px, 6vw, 60px);
+    line-height: 1.04; letter-spacing: -0.03em; font-weight: 700;
+    margin-bottom: 18px;
+  }
+  h1 .grad {
+    background: linear-gradient(120deg, var(--accent-2), var(--accent));
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .lede { font-size: 19px; color: var(--muted); max-width: 30ch; margin-bottom: 32px; }
+  .cta { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+  .btn {
+    display: inline-flex; align-items: center; gap: 10px;
+    font-size: 16px; font-weight: 600;
+    padding: 14px 24px; border-radius: 14px;
+    background: linear-gradient(120deg, var(--accent-2), var(--accent));
+    color: #fff; box-shadow: 0 8px 24px rgba(37, 99, 235, 0.32);
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+  }
+  .btn:hover { transform: translateY(-2px); box-shadow: 0 12px 30px rgba(37, 99, 235, 0.40); }
+  .btn-ghost { background: var(--surface); color: var(--text); border: 1px solid var(--border); box-shadow: none; }
+  .btn-ghost:hover { box-shadow: var(--shadow); }
+  .meta { margin-top: 16px; font-size: 13px; color: var(--muted); }
+
+  /* ---------- The pill mockup ---------- */
+  .pill-stage { display: flex; justify-content: center; }
+  .pill {
+    width: 300px;
+    background: linear-gradient(160deg, #1c1c22, #131318);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 26px;
+    padding: 18px 20px;
+    box-shadow: 0 30px 70px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    color: #f5f5f7;
+    animation: float 6s ease-in-out infinite;
+  }
+  @keyframes float { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
+  @media (prefers-reduced-motion: reduce) { .pill { animation: none; } }
+  .pill-section { font-size: 10px; font-weight: 700; letter-spacing: 0.12em; color: #8a8a93; margin: 4px 0 10px; }
+  .row { display: grid; grid-template-columns: 54px 1fr 46px; align-items: center; gap: 10px; margin-bottom: 12px; }
+  .row .name { font-size: 12px; color: #c7c7d1; }
+  .row .val { font-size: 12px; font-weight: 600; text-align: right; color: #f5f5f7; font-variant-numeric: tabular-nums; }
+  .bar { height: 7px; border-radius: 4px; background: rgba(255, 255, 255, 0.10); overflow: hidden; }
+  .bar > i { display: block; height: 100%; border-radius: 4px; }
+  .fill-blue  > i { width: 41%; background: linear-gradient(90deg, #60a5fa, #3b82f6); }
+  .fill-amber > i { width: 78%; background: linear-gradient(90deg, #ffcf6b, #f5a623); }
+  .fill-green > i { width: 58%; background: linear-gradient(90deg, #5fe07f, #34c759); }
+  .pill-divider { height: 1px; background: rgba(255, 255, 255, 0.08); margin: 6px 0 14px; }
+
+  /* ---------- Sections ---------- */
+  section { padding: 72px 0; }
+  .section-title { font-size: clamp(26px, 4vw, 34px); font-weight: 700; letter-spacing: -0.02em; text-align: center; margin-bottom: 8px; }
+  .section-sub { text-align: center; color: var(--muted); margin-bottom: 44px; }
+  .features { display: grid; grid-template-columns: repeat(2, 1fr); gap: 18px; }
+  .card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 18px; padding: 26px; box-shadow: var(--shadow);
+  }
+  .card .ico {
+    width: 42px; height: 42px; border-radius: 12px; display: grid; place-items: center;
+    background: color-mix(in srgb, var(--accent) 12%, transparent); color: var(--accent); margin-bottom: 16px;
+  }
+  .card h3 { font-size: 18px; letter-spacing: -0.01em; margin-bottom: 6px; }
+  .card p { color: var(--muted); font-size: 15px; }
+
+  /* ---------- Install ---------- */
+  .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; max-width: 860px; margin: 0 auto; }
+  .step { text-align: center; padding: 8px; }
+  .step .num {
+    width: 40px; height: 40px; border-radius: 50%; margin: 0 auto 14px;
+    display: grid; place-items: center; font-weight: 700;
+    background: linear-gradient(120deg, var(--accent-2), var(--accent)); color: #fff;
+  }
+  .step h4 { font-size: 16px; margin-bottom: 4px; }
+  .step p { color: var(--muted); font-size: 14px; }
+  .install-cta { text-align: center; margin-top: 44px; }
+
+  /* ---------- Footer ---------- */
+  footer { border-top: 1px solid var(--border); padding: 44px 0 56px; }
+  .foot-links { display: flex; gap: 22px; justify-content: center; flex-wrap: wrap; font-size: 15px; margin-bottom: 20px; }
+  .foot-links a { color: var(--text); }
+  .foot-links a:hover { color: var(--accent); }
+  .disclaimer { text-align: center; color: var(--muted); font-size: 13px; max-width: 64ch; margin: 0 auto; }
+
+  @media (max-width: 800px) {
+    .hero-grid { grid-template-columns: 1fr; gap: 40px; text-align: center; }
+    .lede { margin-left: auto; margin-right: auto; }
+    .cta { justify-content: center; }
+    .eyebrow { margin-left: auto; margin-right: auto; }
+    .features { grid-template-columns: 1fr; }
+    .steps { grid-template-columns: 1fr; gap: 28px; }
+  }
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="wrap hero-grid">
+    <div>
+      <span class="eyebrow"><span class="dot"></span> Notarized for macOS</span>
+      <h1>All your AI usage,<br /><span class="grad">in one pill.</span></h1>
+      <p class="lede">A tiny menu-bar widget that keeps your Claude plan windows and every API balance in view — always on top.</p>
+      <div class="cta">
+        <a class="btn" href="https://github.com/greatdeepband/usage-pill/releases/latest">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m0 0l4-4m-4 4l-4-4M5 21h14"/></svg>
+          Download for macOS
+        </a>
+        <a class="btn btn-ghost" href="https://github.com/greatdeepband/usage-pill">View on GitHub</a>
+      </div>
+      <p class="meta">Free &middot; macOS 14 Sonoma or later &middot; Apple-notarized</p>
+    </div>
+
+    <div class="pill-stage">
+      <div class="pill" role="img" aria-label="Example of the Usage Pill widget showing Claude session and weekly usage and a DeepSeek balance">
+        <div class="pill-section">CLAUDE</div>
+        <div class="row"><span class="name">Session</span><span class="bar fill-blue"><i></i></span><span class="val">41%</span></div>
+        <div class="row"><span class="name">Week</span><span class="bar fill-amber"><i></i></span><span class="val">78%</span></div>
+        <div class="pill-divider"></div>
+        <div class="pill-section">DEEPSEEK</div>
+        <div class="row"><span class="name">Balance</span><span class="bar fill-green"><i></i></span><span class="val">$18.40</span></div>
+      </div>
+    </div>
+  </div>
+</header>
+
+<section>
+  <div class="wrap">
+    <h2 class="section-title">Everything, at a glance</h2>
+    <p class="section-sub">One pill. Every meter you care about.</p>
+    <div class="features">
+      <div class="card">
+        <div class="ico"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2 2M12 1h0M9 1h6"/></svg></div>
+        <h3>Claude plan windows</h3>
+        <p>Your 5-hour session and weekly limits, live — so you always know how much headroom is left before you hit a wall.</p>
+      </div>
+      <div class="card">
+        <div class="ico"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="13" rx="2"/><path d="M2 10h20M16 14h2"/></svg></div>
+        <h3>Any API balance</h3>
+        <p>DeepSeek, OpenRouter, MiniMax, OpenAI spend — paste a key, tap the number you recognize, and it tracks the rest.</p>
+      </div>
+      <div class="card">
+        <div class="ico"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l8 4v6c0 5-3.5 8-8 10-4.5-2-8-5-8-10V6l8-4z"/><path d="M9 12l2 2 4-4"/></svg></div>
+        <h3>Reads silently, never writes</h3>
+        <p>It reads your Claude sign-in through Apple's own keychain helper — no password prompts, and it never alters or refreshes your login.</p>
+      </div>
+      <div class="card">
+        <div class="ico"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l2.5 5 5.5.8-4 3.9.9 5.5L12 20l-4.9 2.6.9-5.5-4-3.9 5.5-.8L12 2z"/></svg></div>
+        <h3>Native &amp; notarized</h3>
+        <p>A real menu-bar app — Developer-ID signed and notarized by Apple, so it opens cleanly with no security warnings.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section style="background: color-mix(in srgb, var(--accent) 5%, var(--bg));">
+  <div class="wrap">
+    <h2 class="section-title">Up and running in a minute</h2>
+    <p class="section-sub">No account, no setup wizard. Just drag and go.</p>
+    <div class="steps">
+      <div class="step">
+        <div class="num">1</div>
+        <h4>Download</h4>
+        <p>Grab the disk image from the latest release.</p>
+      </div>
+      <div class="step">
+        <div class="num">2</div>
+        <h4>Drag to Applications</h4>
+        <p>Open the image and drop Usage Pill onto the Applications shortcut.</p>
+      </div>
+      <div class="step">
+        <div class="num">3</div>
+        <h4>Launch</h4>
+        <p>Open it from your menu bar and set up your meters from the gear.</p>
+      </div>
+    </div>
+    <div class="install-cta">
+      <a class="btn" href="https://github.com/greatdeepband/usage-pill/releases/latest">Download Usage Pill</a>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <div class="foot-links">
+      <a href="https://github.com/greatdeepband/usage-pill">GitHub</a>
+      <a href="https://github.com/greatdeepband/usage-pill/releases/latest">Latest release</a>
+      <a href="https://github.com/greatdeepband/usage-pill/blob/main/CHANGELOG.md">Changelog</a>
+    </div>
+    <p class="disclaimer">Usage Pill is an independent project. It is not affiliated with, endorsed by, or sponsored by Anthropic, OpenAI, DeepSeek, or any other provider whose usage it displays. All product names and trademarks belong to their respective owners.</p>
+  </div>
+</footer>
+
+</body>
+</html>
