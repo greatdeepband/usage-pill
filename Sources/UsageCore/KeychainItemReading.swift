@@ -58,6 +58,12 @@ public struct SecurityToolReader: KeychainItemReading {
         DispatchQueue.global().asyncAfter(deadline: .now() + timeout, execute: term)
         DispatchQueue.global().asyncAfter(deadline: .now() + timeout + killGrace, execute: kill9)
 
+        // Draining stdout fully, THEN stderr, is safe only because
+        // `find-generic-password -w` emits a small secret on stdout and ~nothing
+        // on stderr — both far under the ~64KB pipe buffer, so neither stream can
+        // block the child while we read the other. A tool that flooded BOTH pipes
+        // could deadlock here; this reader is purpose-built for `security` and
+        // must not be repurposed for a chatty subprocess without concurrent reads.
         let raw = out.fileHandleForReading.readDataToEndOfFile()
         _ = err.fileHandleForReading.readDataToEndOfFile()   // drained; NEVER logged
         process.waitUntilExit()
