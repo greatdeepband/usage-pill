@@ -1,5 +1,17 @@
 # Changelog
 
+## v1.1.1 — 2026-06-18
+
+No more admin-password prompts on wake or relaunch. Two changes close the
+last gaps. Claude's credential is now read through Apple's own
+`/usr/bin/security` helper — admitted to the keychain item directly, so the
+read stays silent no matter how often the app is rebuilt or the token
+rotates underneath it. And Usage Pill is now signed with an Apple Developer
+ID and notarized by Apple: Gatekeeper opens it without the right-click
+dance, and the stable Team ID means your own saved provider keys (DeepSeek
+and the rest) are read without a prompt across every future update. Strictly
+read-only throughout — the app never writes or refreshes Claude's login.
+
 ## v1.1.0 — 2026-06-13
 
 The catalog release: Add Provider now opens a grouped template catalog —

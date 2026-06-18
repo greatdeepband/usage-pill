@@ -30,6 +30,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         let provider = KeychainCredentialsProvider()
         let cache = CredentialsCache(load: { try provider.load() })
+        // The two synchronous main-thread presence probes below (:first-run
+        // smart default, walkthrough claudeCheck) use a SHORT-timeout reader so
+        // a hung `security` subprocess can never beachball launch or the
+        // walkthrough — bounded ≤ ~2 s worst case (1.5 s SIGTERM + 0.5 s SIGKILL
+        // grace). The cache's `provider` above deliberately keeps the default
+        // 5 s reader: it runs OFF the main thread inside the CredentialsCache
+        // actor and is cached/rare, so the longer window is fine there.
+        let probeProvider = KeychainCredentialsProvider(
+            reader: SecurityToolReader(timeout: 1.5, killGrace: 0.5))
         let fetcher = UsageFetcher(cache: cache)
         model = UsageModel(fetch: { try await fetcher.fetch() })
 
@@ -70,7 +79,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // ThemeSettings' own key constants BEFORE ThemeStore loads them,
             // so a non-Claude user gets the empty-capsule hint instead of two
             // dead bars.
-            if (try? provider.load()) == nil {
+            // Use the SHORT-timeout probeProvider so a hung `security` can't
+            // beachball first-run launch. A timeout/error → load() throws →
+            // treated as "absent" here (hides both Claude rows). That is a
+            // benign cosmetic default on the rare first-run hang — the user can
+            // unpin/repin in Settings — and never a beachball.
+            if (try? probeProvider.load()) == nil {
                 let hidden = ProviderSpec.Visibility.hidden.rawValue
                 UserDefaults.standard.set(hidden, forKey: ThemeSettings.sessionVisibilityKey)
                 UserDefaults.standard.set(hidden, forKey: ThemeSettings.weekVisibilityKey)
@@ -84,9 +98,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             providersModel: providersModel,
             specStore: specStore,
             keyStore: keyStore,
-            // Walkthrough credential check: the SAME read-only loader the
-            // smart default used above — presence only, nothing retained.
-            claudeCheck: { (try? provider.load()) != nil }
+            // Walkthrough credential check: presence only, nothing retained,
+            // via the SHORT-timeout probeProvider so the walkthrough can't
+            // beachball. A timeout/error → load() throws → returns false ("no
+            // sign-in found yet", the walkthrough's existing benign state);
+            // bounded ≤ ~2 s.
+            claudeCheck: { (try? probeProvider.load()) != nil }
         )
 
         panel = PillPanel()
