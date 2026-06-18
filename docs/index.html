@@ -11,6 +11,7 @@
 <meta property="og:title" content="Usage Pill" />
 <meta property="og:description" content="All your AI usage meters in one pill — always on top." />
 <meta property="og:url" content="https://greatdeepband.github.io/usage-pill/" />
+<meta property="og:image" content="https://greatdeepband.github.io/usage-pill/img/pill.png" />
 <!-- Pill favicon, inline so there are no extra files -->
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='4' y='10' width='24' height='12' rx='6' fill='%232563EB'/%3E%3Crect x='4' y='10' width='12' height='12' rx='6' fill='%2360A5FA'/%3E%3C/svg%3E" />
 <style>
@@ -109,16 +110,20 @@
   }
   @keyframes float { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
   @media (prefers-reduced-motion: reduce) { .pill { animation: none; } }
-  .pill-section { font-size: 10px; font-weight: 700; letter-spacing: 0.12em; color: #8a8a93; margin: 4px 0 10px; }
-  .row { display: grid; grid-template-columns: 54px 1fr 46px; align-items: center; gap: 10px; margin-bottom: 12px; }
-  .row .name { font-size: 12px; color: #c7c7d1; }
-  .row .val { font-size: 12px; font-weight: 600; text-align: right; color: #f5f5f7; font-variant-numeric: tabular-nums; }
-  .bar { height: 7px; border-radius: 4px; background: rgba(255, 255, 255, 0.10); overflow: hidden; }
-  .bar > i { display: block; height: 100%; border-radius: 4px; }
-  .fill-blue  > i { width: 41%; background: linear-gradient(90deg, #60a5fa, #3b82f6); }
-  .fill-amber > i { width: 78%; background: linear-gradient(90deg, #ffcf6b, #f5a623); }
-  .fill-green > i { width: 58%; background: linear-gradient(90deg, #5fe07f, #34c759); }
-  .pill-divider { height: 1px; background: rgba(255, 255, 255, 0.08); margin: 6px 0 14px; }
+  .pill-section { font-size: 10px; font-weight: 700; letter-spacing: 0.12em; color: #8a8a93; margin: 12px 0 9px; }
+  .pill-section:first-child { margin-top: 2px; }
+  .meter { margin-bottom: 4px; }
+  .meter-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 7px; }
+  .meter-head .name { font-size: 13px; font-weight: 600; color: #f0f0f4; }
+  .meter-head .name.credits { color: #67d98a; }
+  .meter-head .status { font-size: 11px; color: #8a8a93; font-variant-numeric: tabular-nums; }
+  .bar { height: 6px; border-radius: 3px; background: rgba(255, 255, 255, 0.10); overflow: hidden; }
+  .bar > i { display: block; height: 100%; border-radius: 3px; }
+  .fill-session > i { width: 30%; background: linear-gradient(90deg, #d8b48c, #c9a27e); }
+  .fill-week    > i { width: 60%; background: linear-gradient(90deg, #a9bbd8, #8fa6c8); }
+  .fill-credits > i { width: 100%; background: linear-gradient(90deg, #67d98a, #34c759); }
+  .pill-divider { height: 1px; background: rgba(255, 255, 255, 0.08); margin: 14px 0; }
+  .pill-updated { font-size: 10px; color: #76767e; text-align: right; margin-top: 14px; }
 
   /* ---------- Sections ---------- */
   section { padding: 72px 0; }
@@ -135,6 +140,16 @@
   }
   .card h3 { font-size: 18px; letter-spacing: -0.01em; margin-bottom: 6px; }
   .card p { color: var(--muted); font-size: 15px; }
+
+  /* ---------- Screenshots ---------- */
+  .shots { display: grid; grid-template-columns: repeat(3, 1fr); gap: 22px; align-items: start; }
+  .shot {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 16px; padding: 16px; box-shadow: var(--shadow); text-align: center;
+  }
+  .shot img { width: 100%; height: auto; border-radius: 8px; display: block; }
+  .shot figcaption { margin-top: 14px; font-size: 13px; color: var(--muted); }
+  @media (max-width: 800px) { .shots { grid-template-columns: 1fr; max-width: 360px; margin: 0 auto; } }
 
   /* ---------- Install ---------- */
   .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; max-width: 860px; margin: 0 auto; }
@@ -186,11 +201,21 @@
     <div class="pill-stage">
       <div class="pill" role="img" aria-label="Example of the Usage Pill widget showing Claude session and weekly usage and a DeepSeek balance">
         <div class="pill-section">CLAUDE</div>
-        <div class="row"><span class="name">Session</span><span class="bar fill-blue"><i></i></span><span class="val">41%</span></div>
-        <div class="row"><span class="name">Week</span><span class="bar fill-amber"><i></i></span><span class="val">78%</span></div>
+        <div class="meter">
+          <div class="meter-head"><span class="name">Session</span><span class="status">resets in 2h 14m</span></div>
+          <div class="bar fill-session"><i></i></div>
+        </div>
+        <div class="meter">
+          <div class="meter-head"><span class="name">Week</span><span class="status">resets Sun 07:00</span></div>
+          <div class="bar fill-week"><i></i></div>
+        </div>
         <div class="pill-divider"></div>
         <div class="pill-section">DEEPSEEK</div>
-        <div class="row"><span class="name">Balance</span><span class="bar fill-green"><i></i></span><span class="val">$18.40</span></div>
+        <div class="meter">
+          <div class="meter-head"><span class="name credits">Credits</span><span class="status">$43.16</span></div>
+          <div class="bar fill-credits"><i></i></div>
+        </div>
+        <div class="pill-updated">updated 3m ago</div>
       </div>
     </div>
   </div>
@@ -221,6 +246,27 @@
         <h3>Native &amp; notarized</h3>
         <p>A real menu-bar app — Developer-ID signed and notarized by Apple, so it opens cleanly with no security warnings.</p>
       </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2 class="section-title">See it in your menu bar</h2>
+    <p class="section-sub">Real screenshots — the pill, and the settings behind it.</p>
+    <div class="shots">
+      <figure class="shot">
+        <img src="img/pill.png" alt="The Usage Pill widget: Claude session resets in 2h 14m, Week resets Sun 07:00, and a DeepSeek balance of $43.16" loading="lazy" />
+        <figcaption>The pill — Claude windows plus a live DeepSeek balance, always on top.</figcaption>
+      </figure>
+      <figure class="shot">
+        <img src="img/settings.png" alt="Usage Pill settings listing the Claude plan and a DeepSeek provider, with an Add Provider button" loading="lazy" />
+        <figcaption>Settings — add any provider, reorder rows, choose what shows.</figcaption>
+      </figure>
+      <figure class="shot">
+        <img src="img/customize.png" alt="Per-provider customization: colour palette, red-alert toggle, and pin controls for the Claude plan" loading="lazy" />
+        <figcaption>Per-row controls — palettes, a 90% red alert, and pinning.</figcaption>
+      </figure>
     </div>
   </div>
 </section>
