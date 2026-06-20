@@ -22,9 +22,16 @@ enum Dusk {
 }
 
 struct PillView: View {
-    @ObservedObject var model: UsageModel
+    // Claude model + identity are OPTIONAL: the MAS (sandboxed, providers-only)
+    // build constructs the panel with `model: nil, identity: nil`, so the whole
+    // Claude section + identity strip + Claude footer hints disappear. The
+    // Developer-ID build passes the real (non-nil) objects → behaviour unchanged.
+    // They are plain (un-observed) here because @ObservedObject can't wrap an
+    // optional; the live observation happens inside ClaudeSection, a child that
+    // is only built when both are non-nil (so it observes concrete objects).
+    let model: UsageModel?
     @ObservedObject var theme: ThemeStore
-    @ObservedObject var identity: IdentityModel
+    let identity: IdentityModel?
     @ObservedObject var providers: ProvidersModel
     var onExpandChange: (Bool) -> Void
 
@@ -38,7 +45,7 @@ struct PillView: View {
             .onHover { hovering in
                 withAnimation(.easeInOut(duration: 0.18)) { expanded = hovering }
                 onExpandChange(hovering)
-                if hovering && theme.showIdentity { identity.loadIfNeeded() }
+                if hovering && theme.showIdentity { identity?.loadIfNeeded() }
             }
             .onReceive(tick) { now = $0 }
     }
@@ -74,7 +81,7 @@ struct PillView: View {
         let showSession = isVisible(theme.sessionVisibility)
         let showWeek = isVisible(theme.weekVisibility)
         let providerRows = visibleProviderRows
-        VStack(alignment: .leading, spacing: expanded ? 10 : 6) {
+        let pill = VStack(alignment: .leading, spacing: expanded ? 10 : 6) {
             // True empty: no rows at all in either mode → prompt user to open
             // Settings (one branch — it renders in compact AND expanded).
             // Compact with no pinned rows but expanded has content → quiet ellipsis
@@ -97,42 +104,28 @@ struct PillView: View {
             } else {
                 // Claude section: header + (identity strip) + visible Claude
                 // rows. Header and identity render only when ≥1 Claude row is
-                // visible in the current mode (hidden-Claude carve-out).
-                if showSession || showWeek {
-                    // Red alert at 90% weekly: tones for BOTH Claude bars come
-                    // from one place, so the session bar flares with the week.
-                    let tones = BarTone.claudeTones(
-                        session: model.snapshot?.session?.utilization,
-                        week: model.snapshot?.week?.utilization,
-                        redAlert90: theme.redAlert90
+                // visible in the current mode (hidden-Claude carve-out) AND the
+                // Claude model exists (it is nil in the MAS, providers-only
+                // build). The section is a child view so it can @ObservedObject
+                // the (now non-optional) model + identity for live updates.
+                if let model, let identity, showSession || showWeek {
+                    ClaudeSection(
+                        model: model, identity: identity, theme: theme,
+                        expanded: expanded, showSession: showSession,
+                        showWeek: showWeek, now: now
                     )
-                    sectionHeader("Claude")
-                    if expanded && theme.showIdentity && (identity.email != nil || identity.planBadge != nil) {
-                        identityStrip
-                    }
-                    if showSession {
-                        barRow(
-                            window: model.snapshot?.session, base: Color(themeHex: theme.theme.sessionHex),
-                            tone: tones.session, symbol: "clock",
-                            label: "Session",
-                            resetText: CountdownFormatter.remaining(until: model.snapshot?.session?.resetsAt, now: now)
-                        )
-                    }
-                    if showWeek {
-                        barRow(
-                            window: model.snapshot?.week, base: Color(themeHex: theme.theme.weekHex),
-                            tone: tones.week, symbol: "calendar",
-                            label: "Week",
-                            resetText: CountdownFormatter.weekReset(model.snapshot?.week?.resetsAt, now: now)
-                        )
-                    }
                 }
                 // One section per provider: uppercased name header + its row.
                 ForEach(providerRows) { row in
                     sectionHeader(row.spec.displayName)
                     ProviderRow(spec: row.spec, rowModel: row.model, expanded: expanded)
                 }
-                if expanded { footer }
+                if expanded {
+                    PillFooter(
+                        model: model, theme: theme, expanded: expanded, now: now,
+                        oldestSuccessSeconds: oldestSuccessSeconds
+                    )
+                }
             }
         }
         // Expanded paddings are fixed (declared perfect); compact paddings
@@ -148,11 +141,118 @@ struct PillView: View {
         }
         .clipShape(shape)
         .overlay(shape.stroke(.white.opacity(0.12), lineWidth: 1))
-        .opacity(model.status == .stale(reason: .unauthorized) ? 0.75 : 1)
+        // Dim the whole pill while the Claude credential is unauthorized.
+        // Applied through an OBSERVING modifier so the dim flips the instant
+        // model.status changes (Developer-ID build) — PillView holds `model` as
+        // a plain optional and does not itself observe it, so reading
+        // model.status here directly would only repaint on the 1 Hz tick. The
+        // MAS build has no model ⇒ never dimmed.
+        if let model {
+            pill.modifier(UnauthorizedDim(model: model))
+        } else {
+            pill
+        }
     }
 
     /// Uppercased micro-caption above each section. Identity-strip caption
     /// styling (bold, wide tracking, dim white); 8.5pt expanded, 7.5pt compact.
+    private func sectionHeader(_ title: String) -> some View {
+        Text(title.uppercased())
+            .font(.system(size: expanded ? 8.5 : 7.5, weight: .bold))
+            .tracking(1.6)
+            .foregroundStyle(.white.opacity(0.38))
+            .lineLimit(1)
+    }
+
+    /// Seconds since the OLDEST success across the Claude model (when any
+    /// Claude row is visible) and all visible provider rows. nil if NO
+    /// considered row has ever succeeded — keeps the "no data yet" semantics.
+    ///
+    /// Keyless rows (.stale(.auth) with no lastSuccess) are excluded from
+    /// consideration: before Milestone C they have no key and will never
+    /// succeed, so including them would pin "no data yet" in the footer
+    /// forever even when Claude data is fresh.
+    private var oldestSuccessSeconds: TimeInterval? {
+        var dates: [Date] = []
+        // The Claude model contributes only when it exists (nil in the MAS
+        // build) AND at least one Claude row is visible.
+        if let model, isVisible(theme.sessionVisibility) || isVisible(theme.weekVisibility) {
+            guard let d = model.lastSuccess else { return nil }
+            dates.append(d)
+        }
+        for row in visibleProviderRows {
+            if let d = row.model.lastSuccess {
+                dates.append(d)
+            } else if case .stale(let f) = row.model.status, f == .auth {
+                // Keyless row: never succeeded and has no key — skip it so it
+                // doesn't permanently suppress "updated X ago" for other rows.
+                continue
+            } else {
+                // A row with a key that hasn't returned yet: treat as no data.
+                return nil
+            }
+        }
+        guard let oldest = dates.min() else { return nil }
+        return now.timeIntervalSince(oldest)
+    }
+}
+
+/// Dims the whole pill while the Claude credential is unauthorized. It is its
+/// own modifier so it can @ObservedObject the model and repaint the instant
+/// `status` flips — PillView holds the model as a plain optional (the MAS build
+/// passes nil) and so cannot observe it directly.
+private struct UnauthorizedDim: ViewModifier {
+    @ObservedObject var model: UsageModel
+    func body(content: Content) -> some View {
+        content.opacity(model.status == .stale(reason: .unauthorized) ? 0.75 : 1)
+    }
+}
+
+/// The Claude block: section header + (identity strip) + the Session/Week
+/// bars. Split into its own view so it can @ObservedObject the (non-optional)
+/// Claude model + identity for live updates — PillView holds them as plain
+/// optionals (the MAS build passes nil and this view is never built). Renders
+/// only when ≥1 Claude row is visible in the current mode.
+private struct ClaudeSection: View {
+    @ObservedObject var model: UsageModel
+    @ObservedObject var identity: IdentityModel
+    @ObservedObject var theme: ThemeStore
+    let expanded: Bool
+    let showSession: Bool
+    let showWeek: Bool
+    let now: Date
+
+    var body: some View {
+        // Red alert at 90% weekly: tones for BOTH Claude bars come from one
+        // place, so the session bar flares with the week.
+        let tones = BarTone.claudeTones(
+            session: model.snapshot?.session?.utilization,
+            week: model.snapshot?.week?.utilization,
+            redAlert90: theme.redAlert90
+        )
+        sectionHeader("Claude")
+        if expanded && theme.showIdentity && (identity.email != nil || identity.planBadge != nil) {
+            identityStrip
+        }
+        if showSession {
+            barRow(
+                window: model.snapshot?.session, base: Color(themeHex: theme.theme.sessionHex),
+                tone: tones.session, symbol: "clock",
+                label: "Session",
+                resetText: CountdownFormatter.remaining(until: model.snapshot?.session?.resetsAt, now: now)
+            )
+        }
+        if showWeek {
+            barRow(
+                window: model.snapshot?.week, base: Color(themeHex: theme.theme.weekHex),
+                tone: tones.week, symbol: "calendar",
+                label: "Week",
+                resetText: CountdownFormatter.weekReset(model.snapshot?.week?.resetsAt, now: now)
+            )
+        }
+    }
+
+    /// Uppercased micro-caption above the section (matches PillView's).
     private func sectionHeader(_ title: String) -> some View {
         Text(title.uppercased())
             .font(.system(size: expanded ? 8.5 : 7.5, weight: .bold))
@@ -222,55 +322,58 @@ struct PillView: View {
         }
         .frame(height: 5)
     }
+}
 
-    private var footer: some View {
-        // Claude-specific hints make no sense when both Claude rows are hidden.
-        let claudeVisible = isVisible(theme.sessionVisibility) || isVisible(theme.weekVisibility)
-        return HStack {
-            if claudeVisible, case .stale(let reason) = model.status {
-                if reason == .noCredentials {
-                    Text("open Claude Code to sign in")
-                        .font(.system(size: 9.5)).foregroundStyle(Dusk.amber.opacity(0.9))
-                } else if reason == .rateLimited {
-                    Text("rate limited — retrying later")
-                        .font(.system(size: 9.5)).foregroundStyle(Dusk.amber.opacity(0.9))
-                }
-            }
-            Spacer()
-            Text(oldestSuccessSeconds.map(CountdownFormatter.updatedAgo) ?? "no data yet")
-                .font(.system(size: 9.5))
-                .foregroundStyle(model.isDataOld ? Dusk.amber.opacity(0.9) : .white.opacity(0.4))
-        }
+/// The expanded card's footer: a Claude staleness hint on the left (only when
+/// the Claude model exists AND a Claude row is visible) and the shared
+/// "updated X ago" timestamp on the right. The optional Claude model is
+/// observed via a child so a status flip repaints live; nil ⇒ no hint and the
+/// "data old" amber follows the providers' oldest success only.
+private struct PillFooter: View {
+    let model: UsageModel?
+    @ObservedObject var theme: ThemeStore
+    let expanded: Bool
+    let now: Date
+    let oldestSuccessSeconds: TimeInterval?
+
+    private func isVisible(_ visibility: ProviderSpec.Visibility) -> Bool {
+        expanded ? visibility != .hidden : visibility == .pinned
     }
 
-    /// Seconds since the OLDEST success across the Claude model (when any
-    /// Claude row is visible) and all visible provider rows. nil if NO
-    /// considered row has ever succeeded — keeps the "no data yet" semantics.
-    ///
-    /// Keyless rows (.stale(.auth) with no lastSuccess) are excluded from
-    /// consideration: before Milestone C they have no key and will never
-    /// succeed, so including them would pin "no data yet" in the footer
-    /// forever even when Claude data is fresh.
-    private var oldestSuccessSeconds: TimeInterval? {
-        var dates: [Date] = []
-        if isVisible(theme.sessionVisibility) || isVisible(theme.weekVisibility) {
-            guard let d = model.lastSuccess else { return nil }
-            dates.append(d)
+    var body: some View {
+        HStack {
+            if let model {
+                ClaudeStaleHint(model: model, claudeVisible:
+                    isVisible(theme.sessionVisibility) || isVisible(theme.weekVisibility))
+            }
+            Spacer()
+            // "data old" amber is a Claude concept; without a Claude model the
+            // timestamp stays neutral (providers carry their own per-row
+            // staleness captions).
+            Text(oldestSuccessSeconds.map(CountdownFormatter.updatedAgo) ?? "no data yet")
+                .font(.system(size: 9.5))
+                .foregroundStyle((model?.isDataOld ?? false) ? Dusk.amber.opacity(0.9) : .white.opacity(0.4))
         }
-        for row in visibleProviderRows {
-            if let d = row.model.lastSuccess {
-                dates.append(d)
-            } else if case .stale(let f) = row.model.status, f == .auth {
-                // Keyless row: never succeeded and has no key — skip it so it
-                // doesn't permanently suppress "updated X ago" for other rows.
-                continue
-            } else {
-                // A row with a key that hasn't returned yet: treat as no data.
-                return nil
+    }
+}
+
+/// Claude-only staleness line. Its own view so it observes the model for a
+/// live status flip. Hidden Claude rows ⇒ the hint makes no sense, so it is
+/// suppressed.
+private struct ClaudeStaleHint: View {
+    @ObservedObject var model: UsageModel
+    let claudeVisible: Bool
+
+    var body: some View {
+        if claudeVisible, case .stale(let reason) = model.status {
+            if reason == .noCredentials {
+                Text("open Claude Code to sign in")
+                    .font(.system(size: 9.5)).foregroundStyle(Dusk.amber.opacity(0.9))
+            } else if reason == .rateLimited {
+                Text("rate limited — retrying later")
+                    .font(.system(size: 9.5)).foregroundStyle(Dusk.amber.opacity(0.9))
             }
         }
-        guard let oldest = dates.min() else { return nil }
-        return now.timeIntervalSince(oldest)
     }
 }
 

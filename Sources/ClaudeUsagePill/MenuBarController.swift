@@ -5,11 +5,13 @@ import UsageCore
 @MainActor
 final class MenuBarController: NSObject {
     private var statusItem: NSStatusItem!
-    private let model: UsageModel
+    /// nil in the MAS (providers-only) build — Refresh Now then force-refreshes
+    /// only the provider rows.
+    private let model: UsageModel?
     private let onForceRefreshProviders: () -> Void
     private let onOpenSettings: () -> Void
 
-    init(model: UsageModel,
+    init(model: UsageModel? = nil,
          onForceRefreshProviders: @escaping () -> Void,
          onOpenSettings: @escaping () -> Void) {
         self.model = model
@@ -40,8 +42,10 @@ final class MenuBarController: NSObject {
 
     @objc private func refresh() {
         // Explicit user intent overrides the rate-limit backoff window —
-        // for BOTH the Claude model and every provider row.
-        Task { @MainActor in await model.refresh(force: true) }
+        // for BOTH the Claude model (when present) and every provider row.
+        if let model {
+            Task { @MainActor in await model.refresh(force: true) }
+        }
         onForceRefreshProviders()
     }
 

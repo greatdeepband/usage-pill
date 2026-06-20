@@ -4,3 +4,7 @@
 build/
 .swiftpm/
 docs/superpowers/
+
+# Python bytecode caches
+__pycache__/
+*.pyc

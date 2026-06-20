@@ -21,16 +21,21 @@ struct ProvidersTabView: View {
     @ObservedObject var providersModel: ProvidersModel
     let specStore: ProviderSpecStore
     let keyStore: ProviderKeyStore
+    #if !MAS_BUILD
     /// Read-only Claude Code credential presence check for the add flow's
     /// walkthrough page — injected from the AppDelegate wiring so no view
-    /// builds keychain machinery of its own.
+    /// builds keychain machinery of its own. Compiled out of the MAS build
+    /// along with the entire Claude entry.
     let claudeCheck: () -> Bool
+    #endif
     /// Window-title relay: fires on appearance and on every page change.
     var onTitle: (String) -> Void = { _ in }
 
     enum Page: Equatable {
         case list
+        #if !MAS_BUILD
         case claude
+        #endif
         case provider(ProviderSpec)
         case addFlow
     }
@@ -38,6 +43,7 @@ struct ProvidersTabView: View {
     @State private var page: Page = .list
     @State private var specs: [ProviderSpec]
 
+    #if !MAS_BUILD
     init(themeStore: ThemeStore,
          providersModel: ProvidersModel,
          specStore: ProviderSpecStore,
@@ -52,6 +58,20 @@ struct ProvidersTabView: View {
         self.onTitle = onTitle
         _specs = State(initialValue: specStore.load())
     }
+    #else
+    init(themeStore: ThemeStore,
+         providersModel: ProvidersModel,
+         specStore: ProviderSpecStore,
+         keyStore: ProviderKeyStore,
+         onTitle: @escaping (String) -> Void = { _ in }) {
+        self.themeStore = themeStore
+        self.providersModel = providersModel
+        self.specStore = specStore
+        self.keyStore = keyStore
+        self.onTitle = onTitle
+        _specs = State(initialValue: specStore.load())
+    }
+    #endif
 
     var body: some View {
         ZStack(alignment: .top) {
@@ -59,11 +79,13 @@ struct ProvidersTabView: View {
             case .list:
                 listPage
                     .transition(Self.rootTransition)
+            #if !MAS_BUILD
             case .claude:
                 ClaudeSettingsPage(themeStore: themeStore) {
                     navigate(to: .list)
                 }
                 .transition(Self.detailTransition)
+            #endif
             case .provider(let spec):
                 ProviderSettingsPage(
                     spec: spec,
@@ -83,6 +105,7 @@ struct ProvidersTabView: View {
                 )
                 .transition(Self.detailTransition)
             case .addFlow:
+                #if !MAS_BUILD
                 AddProviderFlow(
                     specStore: specStore,
                     keyStore: keyStore,
@@ -98,6 +121,15 @@ struct ProvidersTabView: View {
                     onClose: { navigate(to: .list) }
                 )
                 .transition(Self.detailTransition)
+                #else
+                AddProviderFlow(
+                    specStore: specStore,
+                    keyStore: keyStore,
+                    providersModel: providersModel,
+                    onClose: { navigate(to: .list) }
+                )
+                .transition(Self.detailTransition)
+                #endif
             }
         }
         .frame(width: SettingsStyle.pageWidth)
@@ -132,7 +164,9 @@ struct ProvidersTabView: View {
     static func title(for page: Page) -> String {
         switch page {
         case .list: return "Settings"
+        #if !MAS_BUILD
         case .claude: return "Claude plan"
+        #endif
         case .provider(let spec): return spec.displayName
         case .addFlow: return "Add Provider"
         }
@@ -140,22 +174,31 @@ struct ProvidersTabView: View {
 
     // MARK: list page
 
+    #if !MAS_BUILD
     /// Path-A "removed" semantics: both Claude visibilities hidden ⇒ the row
     /// disappears from the list (and the catalog offers Claude again, Task 4).
     private var claudeRemoved: Bool {
         themeStore.sessionVisibility == .hidden && themeStore.weekVisibility == .hidden
     }
+    #endif
 
     private var listPage: some View {
-        // +1 for the built-in Claude row (when present), +1 for addRow.
+        // MAS build: providers-only list. Non-MAS: +1 for the built-in Claude
+        // row (when present). Always +1 for addRow.
+        #if MAS_BUILD
+        let totalRows = specs.count + 1
+        #else
         let totalRows = specs.count + (claudeRemoved ? 1 : 2)
+        #endif
         let scrolls = totalRows > 10
         return SettingsPage(scrolls: scrolls) {
             SettingsCard {
+                #if !MAS_BUILD
                 if !claudeRemoved {
                     claudeRow
                     CardDivider()
                 }
+                #endif
                 ForEach(specs) { spec in
                     providerRow(spec)
                     CardDivider()
@@ -170,6 +213,7 @@ struct ProvidersTabView: View {
 
     // MARK: rows
 
+    #if !MAS_BUILD
     private var claudeRow: some View {
         Button {
             navigate(to: .claude)
@@ -187,6 +231,7 @@ struct ProvidersTabView: View {
         }
         .buttonStyle(.plain)
     }
+    #endif
 
     private func providerRow(_ spec: ProviderSpec) -> some View {
         HStack(spacing: 8) {
@@ -262,6 +307,7 @@ struct ProvidersTabView: View {
 
     // MARK: row text helpers
 
+    #if !MAS_BUILD
     private var claudeSummary: String {
         let s = themeStore.sessionVisibility
         let w = themeStore.weekVisibility
@@ -282,6 +328,7 @@ struct ProvidersTabView: View {
         case .hidden: return "hidden"
         }
     }
+    #endif
 
     private func visibilityRowLabel(_ v: ProviderSpec.Visibility) -> String {
         switch v {
@@ -335,11 +382,16 @@ struct ProvidersTabView: View {
 
 // MARK: - Claude settings page
 
+#if !MAS_BUILD
 /// Appearance + visibility for the two built-in Claude rows: palette
 /// swatches, custom color wells, the red-alert and identity toggles, then
 /// the visibility pop-ups. Bindings write straight to ThemeStore (live; the
 /// pill IS the preview) — so the page snapshots the store on entry and Back
 /// restores it wholesale, while Done simply returns.
+///
+/// Compiled out of the MAS (providers-only) build: it carries the Claude
+/// Session/Week visibility controls and the Show-account-&-plan toggle, which
+/// govern only the (absent) Claude rows.
 struct ClaudeSettingsPage: View {
     @ObservedObject var themeStore: ThemeStore
     let onClose: () -> Void
@@ -499,6 +551,7 @@ struct ClaudeSettingsPage: View {
         }
     }
 }
+#endif
 
 /// Capsule swatch selection ring (Direction-2: tiles are capsules, like the
 /// pill itself).

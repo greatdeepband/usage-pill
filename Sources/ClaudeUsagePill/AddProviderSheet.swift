@@ -18,8 +18,10 @@ struct AddProviderFlow: View {
     let specStore: ProviderSpecStore
     let keyStore: ProviderKeyStore
     @ObservedObject var providersModel: ProvidersModel
+    #if !MAS_BUILD
     /// Live "both Claude rows hidden" from ProvidersTabView — the catalog
-    /// offers the Claude entry only while it is removed.
+    /// offers the Claude entry only while it is removed. Compiled out of the
+    /// MAS (providers-only) build along with the whole Claude walkthrough.
     let claudeRemoved: () -> Bool
     /// Read-only Claude Code credential presence check, injected from the
     /// AppDelegate wiring (the SAME loader the smart first-launch default
@@ -27,6 +29,7 @@ struct AddProviderFlow: View {
     let claudeCheck: () -> Bool
     /// Path-A "add": flips both Claude visibilities back to .pinned.
     let onClaudeConnected: () -> Void
+    #endif
     /// Navigates back to the settings list (replaces the sheet's dismiss).
     let onClose: () -> Void
 
@@ -40,7 +43,9 @@ struct AddProviderFlow: View {
         case probing
         case pickField([DiscoveredField])
         case finish(DiscoveredField)
+        #if !MAS_BUILD
         case claudeWalkthrough
+        #endif
         case spendForm(ProviderTemplate)
     }
 
@@ -92,6 +97,7 @@ struct AddProviderFlow: View {
     /// nil accentHex renders as the default sage (#9DB39A) in the pill.
     private static let defaultAccent = "#9DB39A"
 
+    #if !MAS_BUILD
     init(specStore: ProviderSpecStore,
          keyStore: ProviderKeyStore,
          providersModel: ProvidersModel,
@@ -110,6 +116,20 @@ struct AddProviderFlow: View {
         _color = State(initialValue: c)
         initialHex = c.themeHex
     }
+    #else
+    init(specStore: ProviderSpecStore,
+         keyStore: ProviderKeyStore,
+         providersModel: ProvidersModel,
+         onClose: @escaping () -> Void) {
+        self.specStore = specStore
+        self.keyStore = keyStore
+        self.providersModel = providersModel
+        self.onClose = onClose
+        let c = Color(themeHex: Self.defaultAccent)
+        _color = State(initialValue: c)
+        initialHex = c.themeHex
+    }
+    #endif
 
     var body: some View {
         Group {
@@ -128,6 +148,7 @@ struct AddProviderFlow: View {
                 } buttons: { buttons }
             case .finish:
                 SettingsPage { finishForm } buttons: { buttons }
+            #if !MAS_BUILD
             case .claudeWalkthrough:
                 SettingsPage {
                     ClaudeWalkthroughPage(
@@ -136,6 +157,7 @@ struct AddProviderFlow: View {
                         onClose: onClose
                     )
                 } buttons: { buttons }
+            #endif
             case .spendForm(let template):
                 SettingsPage { spendForm(template) } buttons: { buttons }
             }
@@ -193,9 +215,11 @@ struct AddProviderFlow: View {
             Button("Add to Pill") { addCustom(field) }
                 .buttonStyle(AccentCapsuleButtonStyle())
                 .keyboardShortcut(.defaultAction)
+        #if !MAS_BUILD
         case .claudeWalkthrough:
             Button("Back") { step = .pickSource }
                 .buttonStyle(CapsuleButtonStyle())
+        #endif
         case .spendForm(let template):
             Button("Back") {
                 spendTask?.cancel()
@@ -212,12 +236,20 @@ struct AddProviderFlow: View {
 
     // MARK: ④ source picker (grouped catalog)
 
-    /// Plans group, minus the Claude entry while Claude is already present
-    /// (path-A: the catalog offers Claude only after Remove).
+    /// Plans group. Non-MAS: minus the Claude entry while Claude is already
+    /// present (path-A: the catalog offers Claude only after Remove). MAS
+    /// (sandboxed, providers-only): the Claude entry is never offered — the
+    /// sandbox cannot read Claude Code's keychain item.
     private var planTemplates: [ProviderTemplate] {
         TemplateCatalog.all.filter { template in
             guard template.group == .plans else { return false }
-            if case .claudePlan = template.kind { return claudeRemoved() }
+            if case .claudePlan = template.kind {
+                #if MAS_BUILD
+                return false
+                #else
+                return claudeRemoved()
+                #endif
+            }
             return true
         }
     }
@@ -291,7 +323,14 @@ struct AddProviderFlow: View {
             }
             step = .customForm
         case .claudePlan:
+            // The MAS build never surfaces the Claude entry (planTemplates
+            // filters it out), so this is unreachable there — but the catalog
+            // kind still exists, so the switch must stay exhaustive.
+            #if !MAS_BUILD
             step = .claudeWalkthrough
+            #else
+            break
+            #endif
         case .openAISpend:
             saveErrorText = nil
             spendError = nil
@@ -852,6 +891,7 @@ struct AddProviderFlow: View {
 
 // MARK: - Claude walkthrough (path-A facade)
 
+#if !MAS_BUILD
 /// The Claude catalog entry's "add" page. No keychain machinery here: the
 /// injected `claudeCheck` is the same read-only credential-presence loader
 /// the smart first-launch default uses. Found (now or on a later check) →
@@ -931,3 +971,4 @@ private struct ClaudeWalkthroughPage: View {
         }
     }
 }
+#endif

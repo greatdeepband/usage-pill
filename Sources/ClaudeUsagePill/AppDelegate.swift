@@ -6,15 +6,20 @@ import UsageCore
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var panel: PillPanel!
-    private var model: UsageModel!
     private var providersModel: ProvidersModel!
-    private var timer: Timer?
     private var providerTimer: Timer?
     private var menuBar: MenuBarController!
     private var themeStore: ThemeStore!
-    private var identityModel: IdentityModel!
     private var settingsController: SettingsWindowController!
     private var cancellables = Set<AnyCancellable>()
+
+    // The Claude credential path is compiled OUT of the MAS (sandboxed,
+    // providers-only) build: App Sandbox cannot read Claude Code's keychain
+    // item. Everything Claude-specific lives behind `#if !MAS_BUILD`.
+    #if !MAS_BUILD
+    private var model: UsageModel!
+    private var timer: Timer?
+    private var identityModel: IdentityModel!
     /// Tracks the visibility-sink's last "any Claude row visible" state so a
     /// both-hidden → any-visible flip can trigger an immediate catch-up fetch.
     private var claudeWasVisible = false
@@ -26,8 +31,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var anyClaudeRowVisible: Bool {
         themeStore.sessionVisibility != .hidden || themeStore.weekVisibility != .hidden
     }
+    #endif
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        #if !MAS_BUILD
         let provider = KeychainCredentialsProvider()
         let cache = CredentialsCache(load: { try provider.load() })
         // The two synchronous main-thread presence probes below (:first-run
@@ -41,6 +48,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             reader: SecurityToolReader(timeout: 1.5, killGrace: 0.5))
         let fetcher = UsageFetcher(cache: cache)
         model = UsageModel(fetch: { try await fetcher.fetch() })
+        #endif
 
         let keyStore = ProviderKeyStore()
         let specStore = ProviderSpecStore()
@@ -69,6 +77,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             from: UserDefaults(suiteName: ThemeSettings.legacyV1Domain),
             into: .standard
         )
+        #if !MAS_BUILD
         if wasFirstRun {
             // One-shot synchronous credential presence check via the SAME
             // read-only loader CredentialsCache wraps — this is the launch
@@ -90,7 +99,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 UserDefaults.standard.set(hidden, forKey: ThemeSettings.weekVisibilityKey)
             }
         }
+        #else
+        _ = wasFirstRun // first-run is Claude-only; nothing to default in MAS
+        #endif
         themeStore = ThemeStore()
+
+        #if !MAS_BUILD
         let profileFetcher = ProfileFetcher(cache: cache)
         identityModel = IdentityModel(cache: cache, fetchProfile: { try await profileFetcher.fetch() })
         settingsController = SettingsWindowController(
@@ -105,11 +119,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // bounded ≤ ~2 s.
             claudeCheck: { (try? probeProvider.load()) != nil }
         )
+        #else
+        settingsController = SettingsWindowController(
+            themeStore: themeStore,
+            providersModel: providersModel,
+            specStore: specStore,
+            keyStore: keyStore
+        )
+        #endif
 
         panel = PillPanel()
+        // MAS build: the panel is providers-only — no Claude model, no identity.
+        #if MAS_BUILD
+        let claudeModel: UsageModel? = nil
+        let claudeIdentity: IdentityModel? = nil
+        #else
+        let claudeModel: UsageModel? = model
+        let claudeIdentity: IdentityModel? = identityModel
+        #endif
         panel.contentView = NSHostingView(
             rootView: PillView(
-                model: model, theme: themeStore, identity: identityModel, providers: providersModel
+                model: claudeModel, theme: themeStore, identity: claudeIdentity, providers: providersModel
             ) { [weak self] expanded in
                 self?.panel.setExpanded(expanded)
             }
@@ -117,6 +147,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         panel.orderFrontRegardless()
         syncPanelLayout()
 
+        #if !MAS_BUILD
         themeStore.$showIdentity
             .combineLatest(identityModel.$email, identityModel.$planBadge)
             .receive(on: RunLoop.main)
@@ -144,6 +175,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 self.syncPanelLayout()
             }
             .store(in: &cancellables)
+        #endif
 
         // Any rows change (settings add/remove/visibility → reload()) resizes
         // the pill — future reload() call sites need no manual sync call.
@@ -152,11 +184,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             .sink { [weak self] _ in self?.syncPanelLayout() }
             .store(in: &cancellables)
 
+        #if !MAS_BUILD
         if anyClaudeRowVisible {
             Task { @MainActor in await self.model.refresh() }
         }
+        #endif
         Task { @MainActor in await self.providersModel.refreshAll() }
 
+        #if !MAS_BUILD
         // Create timer and add to .common so it fires even while menus or drags
         // are tracking (which run the RunLoop in a tracking mode, not .default).
         // 360s: two pills may run side-by-side (the frozen v1.x app polls at 180s);
@@ -171,6 +206,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         t.tolerance = 30 // let the OS coalesce wake-ups
         RunLoop.main.add(t, forMode: .common)
         timer = t
+        #endif
 
         // Provider scheduler: separate cadence from the Claude poll — these are
         // the user's OWN keys against third-party endpoints, 300 s is polite.
@@ -186,7 +222,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         ) { [weak self] _ in
             Task { @MainActor in
                 guard let self else { return }
+                #if !MAS_BUILD
                 if self.anyClaudeRowVisible { await self.model.refresh() }
+                #endif
                 await self.providersModel.refreshAll()
             }
         }
@@ -196,10 +234,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         ) { [weak self] _ in
             Task { @MainActor in
                 guard let self else { return }
+                #if !MAS_BUILD
                 if self.anyClaudeRowVisible { await self.model.refresh() }
+                #endif
                 await self.providersModel.refreshAll()
             }
         }
+        #if !MAS_BUILD
         menuBar = MenuBarController(
             model: model,
             onForceRefreshProviders: { [weak self] in
@@ -207,6 +248,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             },
             onOpenSettings: { [weak self] in self?.settingsController.show() }
         )
+        #else
+        menuBar = MenuBarController(
+            onForceRefreshProviders: { [weak self] in
+                Task { @MainActor in await self?.providersModel.refreshAll(force: true) }
+            },
+            onOpenSettings: { [weak self] in self?.settingsController.show() }
+        )
+        #endif
     }
 
     /// Recompute row/section counts for the panel's dynamic heights from the
@@ -215,11 +264,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Sections (Task 18a): the Claude section header counts when ≥1 Claude
     /// row is visible in that mode; each visible provider is its own section.
     private func syncPanelLayout() {
-        let claudeVis = [themeStore.sessionVisibility, themeStore.weekVisibility]
         let rows = providersModel.rows
-        let pinnedClaude = claudeVis.filter { $0 == .pinned }.count
         let pinnedProviders = rows.filter { $0.spec.visibility == .pinned }.count
+        // MAS build is providers-only: no Claude rows, no identity strip.
+        #if MAS_BUILD
+        let pinnedClaude = 0
+        let expandedClaude = 0
+        let identity = false
+        #else
+        let claudeVis = [themeStore.sessionVisibility, themeStore.weekVisibility]
+        let pinnedClaude = claudeVis.filter { $0 == .pinned }.count
         let expandedClaude = claudeVis.filter { $0 != .hidden }.count
+        // Identity lives INSIDE the Claude section now — both Claude rows
+        // hidden ⇒ no strip, so it must not add height either.
+        let identity = expandedClaude > 0 && themeStore.showIdentity
+            && (identityModel.email != nil || identityModel.planBadge != nil)
+        #endif
         panel.applyRowCounts(
             pinnedClaude: pinnedClaude,
             pinnedProviders: pinnedProviders,
@@ -227,10 +287,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             expandedProviders: rows.count, // hidden specs never get a row
             compactSections: (pinnedClaude > 0 ? 1 : 0) + pinnedProviders,
             expandedSections: (expandedClaude > 0 ? 1 : 0) + rows.count,
-            // Identity lives INSIDE the Claude section now — both Claude rows
-            // hidden ⇒ no strip, so it must not add height either.
-            identity: expandedClaude > 0 && themeStore.showIdentity
-                && (identityModel.email != nil || identityModel.planBadge != nil)
+            identity: identity
         )
     }
 }

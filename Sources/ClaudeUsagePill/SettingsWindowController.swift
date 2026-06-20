@@ -15,14 +15,15 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
     private let specStore: ProviderSpecStore
     private let keyStore: ProviderKeyStore
     /// Relayed to the add flow's Claude walkthrough (read-only credential
-    /// presence check, built once in AppDelegate).
+    /// presence check, built once in AppDelegate). nil/unused in the MAS
+    /// (providers-only) build, where the Claude entry is compiled out.
     private let claudeCheck: () -> Bool
 
     init(themeStore: ThemeStore,
          providersModel: ProvidersModel,
          specStore: ProviderSpecStore,
          keyStore: ProviderKeyStore,
-         claudeCheck: @escaping () -> Bool) {
+         claudeCheck: @escaping () -> Bool = { false }) {
         self.themeStore = themeStore
         self.providersModel = providersModel
         self.specStore = specStore
@@ -71,6 +72,17 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
     }
 
     private func makeHost() -> NSHostingController<ProvidersTabView> {
+        // The MAS build's ProvidersTabView has no Claude walkthrough, so it
+        // takes no `claudeCheck`.
+        #if MAS_BUILD
+        let host = NSHostingController(rootView: ProvidersTabView(
+            themeStore: themeStore,
+            providersModel: providersModel,
+            specStore: specStore,
+            keyStore: keyStore,
+            onTitle: { [weak self] title in self?.window?.title = title }
+        ))
+        #else
         let host = NSHostingController(rootView: ProvidersTabView(
             themeStore: themeStore,
             providersModel: providersModel,
@@ -79,6 +91,7 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
             claudeCheck: claudeCheck,
             onTitle: { [weak self] title in self?.window?.title = title }
         ))
+        #endif
         host.sizingOptions = .preferredContentSize
         return host
     }
