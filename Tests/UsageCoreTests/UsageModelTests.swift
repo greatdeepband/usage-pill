@@ -363,3 +363,23 @@ private final class CallCounter: @unchecked Sendable {
     await model.refresh()
     #expect(model.status == .ok)
 }
+
+@Test @MainActor func rateLimitedCapIs600() async {
+    // The usage endpoint hands out an overlong Retry-After right after a restart
+    // (~24 min observed in the field) while the data is actually available much
+    // sooner. The honored backoff is capped at 600s so an automatic poll
+    // re-probes and self-heals instead of freezing for up to the server's value.
+    let clock = ClockBox(Date(timeIntervalSince1970: 0))
+    let (model, callCount) = makeModelCounted(
+        results: [.failure(FetchError.rateLimited(retryAfter: 1440)), .success(snapA)],
+        now: { clock.now }
+    )
+    await model.refresh() // Retry-After 1440 → capped to 600
+    clock.now = Date(timeIntervalSince1970: 599)
+    await model.refresh()
+    #expect(callCount() == 1) // still inside the capped window
+    clock.now = Date(timeIntervalSince1970: 601)
+    await model.refresh()
+    #expect(model.status == .ok) // capped window elapsed → recovered without a forced refresh
+    #expect(callCount() == 2)
+}

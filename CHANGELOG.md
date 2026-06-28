@@ -1,5 +1,19 @@
 # Changelog
 
+## v1.1.2 — 2026-06-26
+
+Fixes two things that surfaced after a restart. **Claude no longer freezes
+after a reboot:** right after boot the usage endpoint hands out an overlong
+`Retry-After` (~24 min observed) while the data is actually available much
+sooner, and the pill honored it — staying stuck until you hit Refresh Now.
+The rate-limit backoff is now capped at 10 minutes, so an automatic poll
+re-probes and self-heals on its own. **The plan badge no longer shows a stale
+tier:** it now reads the multiplier only from the live profile
+(`organization.rate_limit_tier`, server truth) and keeps retrying until that
+resolves, instead of latching the credential's stale copy for the session
+(which could read `MAX 5×` after an upgrade to `MAX 20×`). Until the profile
+loads it shows the base plan (`MAX`) rather than a wrong number.
+
 ## v1.1.1 — 2026-06-18
 
 No more admin-password prompts on wake or relaunch. Two changes close the
