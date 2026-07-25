@@ -120,7 +120,7 @@ final class PillPanel: NSPanel {
         suppressSave = true
         defer { suppressSave = false }
         NSAnimationContext.runAnimationGroup { ctx in
-            ctx.duration = 0.125
+            ctx.duration = 0.25
             self.animator().setFrame(f, display: true)
         }
     }
