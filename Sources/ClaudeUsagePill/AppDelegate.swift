@@ -224,7 +224,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let claudeVis = [themeStore.sessionVisibility, themeStore.weekVisibility]
         let rows = providersModel.rows
         let pinnedClaude = claudeVis.filter { $0 == .pinned }.count
-            + (model.snapshot?.spend?.enabled == true ? 1 : 0)
         let pinnedProviders = rows.filter { $0.spec.visibility == .pinned }.count
         let expandedClaude = claudeVis.filter { $0 != .hidden }.count
             + (model.snapshot?.spend?.enabled == true ? 1 : 0)

@@ -228,7 +228,6 @@ struct PillView: View {
 
     @ViewBuilder
     private func spendRow(spend: SpendInfo) -> some View {
-        let formatted = Self.formatCurrency(spend.used, code: spend.currencyCode)
         if expanded {
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 9) {
@@ -236,34 +235,42 @@ struct PillView: View {
                         .font(.system(size: 11, weight: .semibold))
                         .foregroundStyle(.white.opacity(0.85))
                     Spacer(minLength: 4)
-                    if let limit = spend.limit {
-                        Text("\(formatted) of \(Self.formatCurrency(limit, code: spend.currencyCode))")
-                            .font(.system(size: 10.5).monospacedDigit())
-                            .foregroundStyle(Dusk.sage)
-                    } else {
-                        Text(formatted)
-                            .font(.system(size: 10.5).monospacedDigit())
-                            .foregroundStyle(Dusk.sage)
-                    }
+                    Text(spendValueText(spend))
+                        .font(.system(size: 10.5).monospacedDigit())
+                        .foregroundStyle(Dusk.sage)
+                }
+                if spend.limit != nil {
+                    spendBar(spend: spend)
                 }
             }
-        } else {
-            HStack(spacing: 9) {
-                Image(systemName: "creditcard")
-                    .font(.system(size: 10, weight: .light))
-                    .foregroundStyle(Dusk.sage.opacity(0.7))
-                    .frame(width: 12)
-                Text("Credits")
-                    .font(.system(size: 10.5))
-                    .foregroundStyle(.white.opacity(0.75))
-                    .lineLimit(1)
-                Spacer(minLength: 4)
-                Text(formatted)
-                    .font(.system(size: 10.5).monospacedDigit())
-                    .foregroundStyle(Dusk.sage)
-                    .frame(minWidth: 30, alignment: .trailing)
+        }
+        // Compact: hidden — credits row is expanded-only.
+    }
+
+    /// remaining "of" limit when capped; "spent" when uncapped.
+    private func spendValueText(_ spend: SpendInfo) -> String {
+        if let limit = spend.limit {
+            let remaining = max(limit - spend.used, 0)
+            return "\(Self.formatCurrency(remaining, code: spend.currencyCode)) of \(Self.formatCurrency(limit, code: spend.currencyCode))"
+        }
+        return "\(Self.formatCurrency(spend.used, code: spend.currencyCode)) spent"
+    }
+
+    /// Drain bar: full at limit, empties as credits are consumed.
+    private func spendBar(spend: SpendInfo) -> some View {
+        GeometryReader { geo in
+            ZStack(alignment: .leading) {
+                Capsule().fill(.white.opacity(0.12))
+                if let limit = spend.limit, limit > 0 {
+                    let remaining = max(limit - spend.used, 0)
+                    let fraction = remaining / limit
+                    Capsule()
+                        .fill(Dusk.sage)
+                        .frame(width: max(geo.size.width * fraction, fraction > 0 ? 4 : 0))
+                }
             }
         }
+        .frame(height: 5)
     }
 
     private static func formatCurrency(_ value: Double, code: String) -> String {
