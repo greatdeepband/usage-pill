@@ -31,6 +31,18 @@ enum Fixtures {
             "utilization": null,
             "currency": "USD",
             "disabled_reason": null
+        },
+        "spend": {
+            "used": {
+                "amount_minor": 14437,
+                "currency": "EUR",
+                "exponent": 2
+            },
+            "limit": null,
+            "percent": 0,
+            "severity": "normal",
+            "enabled": true,
+            "disabled_reason": null
         }
     }
     """#

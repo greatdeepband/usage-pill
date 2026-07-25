@@ -126,6 +126,9 @@ struct PillView: View {
                             resetText: CountdownFormatter.weekReset(model.snapshot?.week?.resetsAt, now: now)
                         )
                     }
+                    if let spend = model.snapshot?.spend, spend.enabled {
+                        spendRow(spend: spend)
+                    }
                 }
                 // One section per provider: uppercased name header + its row.
                 ForEach(providerRows) { row in
@@ -221,6 +224,57 @@ struct PillView: View {
             }
         }
         .frame(height: 5)
+    }
+
+    @ViewBuilder
+    private func spendRow(spend: SpendInfo) -> some View {
+        let formatted = Self.formatCurrency(spend.used, code: spend.currencyCode)
+        if expanded {
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 9) {
+                    Text("Credits")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(.white.opacity(0.85))
+                    Spacer(minLength: 4)
+                    if let limit = spend.limit {
+                        Text("\(formatted) of \(Self.formatCurrency(limit, code: spend.currencyCode))")
+                            .font(.system(size: 10.5).monospacedDigit())
+                            .foregroundStyle(Dusk.sage)
+                    } else {
+                        Text(formatted)
+                            .font(.system(size: 10.5).monospacedDigit())
+                            .foregroundStyle(Dusk.sage)
+                    }
+                }
+            }
+        } else {
+            HStack(spacing: 9) {
+                Image(systemName: "creditcard")
+                    .font(.system(size: 10, weight: .light))
+                    .foregroundStyle(Dusk.sage.opacity(0.7))
+                    .frame(width: 12)
+                Text("Credits")
+                    .font(.system(size: 10.5))
+                    .foregroundStyle(.white.opacity(0.75))
+                    .lineLimit(1)
+                Spacer(minLength: 4)
+                Text(formatted)
+                    .font(.system(size: 10.5).monospacedDigit())
+                    .foregroundStyle(Dusk.sage)
+                    .frame(minWidth: 30, alignment: .trailing)
+            }
+        }
+    }
+
+    private static func formatCurrency(_ value: Double, code: String) -> String {
+        let number = String(format: "%.2f", value)
+        switch code.uppercased() {
+        case "USD": return "$" + number
+        case "EUR": return "€" + number
+        case "GBP": return "£" + number
+        case "JPY", "CNY": return "¥" + number
+        default: return code + " " + number
+        }
     }
 
     private var footer: some View {

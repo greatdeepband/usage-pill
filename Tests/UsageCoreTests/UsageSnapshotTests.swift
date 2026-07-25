@@ -100,3 +100,33 @@ import Testing
     #expect(snap.week?.utilization == 10)
     #expect(snap.week?.resetsAt == nil)   // boolean resets_at -> nil date
 }
+
+@Test func decodesSpendFromLiveFixture() throws {
+    let snap = try UsageSnapshot.decode(from: Data(Fixtures.liveUsageResponse.utf8))
+    let spend = try #require(snap.spend)
+    #expect(spend.enabled == true)
+    #expect(spend.used == 144.37)  // 14437 / 10^2
+    #expect(spend.limit == nil)
+    #expect(spend.currencyCode == "EUR")
+}
+
+@Test func decodesSpendWithLimit() throws {
+    let json = #"{"five_hour":{"utilization":5,"resets_at":"2026-06-11T00:49:59Z"},"spend":{"used":{"amount_minor":5000,"currency":"USD","exponent":2},"limit":{"amount_minor":10000,"currency":"USD","exponent":2},"enabled":true}}"#
+    let snap = try UsageSnapshot.decode(from: Data(json.utf8))
+    let spend = try #require(snap.spend)
+    #expect(spend.used == 50.00)
+    #expect(spend.limit == 100.00)
+    #expect(spend.currencyCode == "USD")
+}
+
+@Test func spendNilWhenDisabled() throws {
+    let json = #"{"five_hour":{"utilization":5,"resets_at":"2026-06-11T00:49:59Z"},"spend":{"used":{"amount_minor":100,"currency":"USD","exponent":2},"enabled":false}}"#
+    let snap = try UsageSnapshot.decode(from: Data(json.utf8))
+    #expect(snap.spend == nil)
+}
+
+@Test func spendNilWhenAbsent() throws {
+    let json = #"{"five_hour":{"utilization":5,"resets_at":"2026-06-11T00:49:59Z"}}"#
+    let snap = try UsageSnapshot.decode(from: Data(json.utf8))
+    #expect(snap.spend == nil)
+}

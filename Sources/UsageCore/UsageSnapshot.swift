@@ -12,13 +12,34 @@ public struct UsageWindow: Equatable, Sendable {
     }
 }
 
+/// Extra-usage credits spend from the ``spend`` block of the usage response.
+public struct SpendInfo: Equatable, Sendable {
+    /// Amount spent this period (converted from amount_minor / exponent).
+    public let used: Double
+    /// Spend limit, if one is set. nil = unlimited.
+    public let limit: Double?
+    /// ISO currency code (e.g. "EUR", "USD").
+    public let currencyCode: String
+    /// Whether extra usage is enabled on the account.
+    public let enabled: Bool
+
+    public init(used: Double, limit: Double?, currencyCode: String, enabled: Bool) {
+        self.used = used
+        self.limit = limit
+        self.currencyCode = currencyCode
+        self.enabled = enabled
+    }
+}
+
 public struct UsageSnapshot: Equatable, Sendable {
     public let session: UsageWindow? // "five_hour"
     public let week: UsageWindow?    // "seven_day"
+    public let spend: SpendInfo?     // "spend" block
 
-    public init(session: UsageWindow?, week: UsageWindow?) {
+    public init(session: UsageWindow?, week: UsageWindow?, spend: SpendInfo? = nil) {
         self.session = session
         self.week = week
+        self.spend = spend
     }
 }
 
@@ -34,8 +55,48 @@ public extension UsageSnapshot {
         }
         return UsageSnapshot(
             session: UsageWindow(json: root["five_hour"]),
-            week: UsageWindow(json: root["seven_day"])
+            week: UsageWindow(json: root["seven_day"]),
+            spend: SpendInfo(json: root["spend"])
         )
+    }
+}
+
+extension SpendInfo {
+    init?(json: Any?) {
+        guard let dict = json as? [String: Any] else { return nil }
+        let enabled = dict["enabled"] as? Bool ?? false
+        guard enabled else { return nil }
+
+        // Parse amount from the "used" sub-object: {amount_minor, currency, exponent}
+        let used: Double
+        if let usedDict = dict["used"] as? [String: Any],
+           let amountMinor = (usedDict["amount_minor"] as? NSNumber)?.doubleValue {
+            let exponent = (usedDict["exponent"] as? NSNumber)?.intValue ?? 2
+            used = amountMinor / pow(10, Double(exponent))
+        } else {
+            used = 0
+        }
+
+        // Parse limit from the "limit" sub-object (same shape), nil if absent
+        let limit: Double?
+        if let limitDict = dict["limit"] as? [String: Any],
+           let limitMinor = (limitDict["amount_minor"] as? NSNumber)?.doubleValue {
+            let exponent = (limitDict["exponent"] as? NSNumber)?.intValue ?? 2
+            limit = limitMinor / pow(10, Double(exponent))
+        } else {
+            limit = nil
+        }
+
+        // Currency: prefer used.currency, fallback to top-level
+        let currency: String
+        if let usedDict = dict["used"] as? [String: Any],
+           let cur = usedDict["currency"] as? String, !cur.isEmpty {
+            currency = cur
+        } else {
+            currency = "USD"
+        }
+
+        self.init(used: used, limit: limit, currencyCode: currency, enabled: enabled)
     }
 }
 

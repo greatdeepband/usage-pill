@@ -157,6 +157,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         Task { @MainActor in await self.providersModel.refreshAll() }
 
+        // Re-sync panel layout after usage data arrives (spend row may appear/change).
+        model.$snapshot
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in self?.syncPanelLayout() }
+            .store(in: &cancellables)
+
         // Create timer and add to .common so it fires even while menus or drags
         // are tracking (which run the RunLoop in a tracking mode, not .default).
         // 360s: two pills may run side-by-side (the frozen v1.x app polls at 180s);
@@ -218,8 +224,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let claudeVis = [themeStore.sessionVisibility, themeStore.weekVisibility]
         let rows = providersModel.rows
         let pinnedClaude = claudeVis.filter { $0 == .pinned }.count
+            + (model.snapshot?.spend?.enabled == true ? 1 : 0)
         let pinnedProviders = rows.filter { $0.spec.visibility == .pinned }.count
         let expandedClaude = claudeVis.filter { $0 != .hidden }.count
+            + (model.snapshot?.spend?.enabled == true ? 1 : 0)
         panel.applyRowCounts(
             pinnedClaude: pinnedClaude,
             pinnedProviders: pinnedProviders,
