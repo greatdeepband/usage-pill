@@ -111,6 +111,21 @@ public enum TemplateCatalog {
                                 suggestedName: "MiniMax", valueKind: .currency,
                                 currencyCode: "USD"))),
         ProviderTemplate(
+            name: "Moonshot AI balance",
+            subtitle: "verified preset — just needs your key",
+            keyURL: URL(string: "https://platform.kimi.ai/console/api-keys"),
+            group: .balances,
+            kind: .full({
+                ProviderSpec(
+                    id: UUID(), displayName: "Moonshot AI", adapter: .generic,
+                    url: "https://api.moonshot.ai/v1/users/me/balance",
+                    headerName: "Authorization", headerTemplate: "Bearer {key}",
+                    valuePath: "data.available_balance",
+                    subtractPath: nil, scale: 1,
+                    valueKind: .currency, currencyCode: "USD", warnBelow: nil,
+                    visibility: .pinned)
+            })),
+        ProviderTemplate(
             name: "OpenAI spend (this month)",
             subtitle: "month-to-date API spend — needs an org ADMIN key",
             keyURL: URL(string: "https://platform.openai.com/settings/organization/admin-keys"),

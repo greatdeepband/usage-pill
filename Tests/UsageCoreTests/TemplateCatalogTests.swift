@@ -2,14 +2,14 @@ import Foundation
 import Testing
 @testable import UsageCore
 
-@Test func catalogHasAllEightEntriesGrouped() {
+@Test func catalogHasAllNineEntriesGrouped() {
     let plans = TemplateCatalog.all.filter { $0.group == .plans }
     let balances = TemplateCatalog.all.filter { $0.group == .balances }
     #expect(plans.map(\.name) == [
         "Claude plan", "z.ai GLM — 5-hour quota", "z.ai GLM — weekly quota", "MiniMax token plan",
     ])
     #expect(balances.map(\.name) == [
-        "DeepSeek balance", "OpenRouter credits", "MiniMax balance", "OpenAI spend (this month)",
+        "DeepSeek balance", "OpenRouter credits", "MiniMax balance", "Moonshot AI balance", "OpenAI spend (this month)",
     ])
 }
 
