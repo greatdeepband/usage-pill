@@ -96,19 +96,12 @@ final class PillPanel: NSPanel {
     override var canBecomeMain: Bool { false }
 
     /// Grow/shrink downward, keeping the top edge fixed.
-    ///
-    /// Expand snaps the frame INSTANTLY so the expanded area is immediately
-    /// hoverable — the SwiftUI content animation (0.18s easeInOut) still
-    /// plays, but the hit-test area is already the full rect. This kills the
-    /// "hover → move down into the would-be-expanded area → instant collapse"
-    /// bug that came from animating the frame outward while the mouse was
-    /// already inside the target zone.
-    ///
-    /// Collapse animates the frame smoothly — there's no correctness issue
-    /// (the mouse is leaving, not entering), and the smooth shrink reads
-    /// better than a snap.
     func setExpanded(_ expanded: Bool) {
         isExpandedNow = expanded
+        // This guard is race-free ONLY because setFrame(animate: true) blocks the main
+        // thread until the animation completes (verified empirically); if this is ever
+        // switched to non-blocking animator() animation, replace the guard with an
+        // explicit desired-state flag.
         let size = expanded ? currentExpandedSize : compactSize
         guard frame.size != size else { return }
         var f = frame
@@ -126,7 +119,7 @@ final class PillPanel: NSPanel {
 
         suppressSave = true
         defer { suppressSave = false }
-        setFrame(f, display: true, animate: !expanded)
+        setFrame(f, display: true, animate: true)
     }
 
     /// Sync row counts from AppDelegate. When collapsed, re-applies the

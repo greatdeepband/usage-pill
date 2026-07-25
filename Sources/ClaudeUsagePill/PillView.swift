@@ -36,7 +36,7 @@ struct PillView: View {
         content
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             .onHover { hovering in
-                withAnimation(.easeInOut(duration: 0.18)) { expanded = hovering }
+                withAnimation(.easeInOut(duration: 0.09)) { expanded = hovering }
                 onExpandChange(hovering)
                 if hovering && theme.showIdentity { identity.loadIfNeeded() }
             }
