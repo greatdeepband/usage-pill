@@ -98,10 +98,6 @@ final class PillPanel: NSPanel {
     /// Grow/shrink downward, keeping the top edge fixed.
     func setExpanded(_ expanded: Bool) {
         isExpandedNow = expanded
-        // This guard is race-free ONLY because setFrame(animate: true) blocks the main
-        // thread until the animation completes (verified empirically); if this is ever
-        // switched to non-blocking animator() animation, replace the guard with an
-        // explicit desired-state flag.
         let size = expanded ? currentExpandedSize : compactSize
         guard frame.size != size else { return }
         var f = frame
@@ -119,7 +115,11 @@ final class PillPanel: NSPanel {
 
         suppressSave = true
         defer { suppressSave = false }
-        setFrame(f, display: true, animate: true)
+        NSAnimationContext.runAnimationGroup { ctx in
+            ctx.duration = 0.045
+            ctx.allowsImplicitAnimation = true
+            self.setFrame(f, display: true, animate: true)
+        }
     }
 
     /// Sync row counts from AppDelegate. When collapsed, re-applies the
