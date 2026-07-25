@@ -96,6 +96,10 @@ final class PillPanel: NSPanel {
     override var canBecomeMain: Bool { false }
 
     /// Grow/shrink downward, keeping the top edge fixed.
+    ///
+    /// Uses animator().setFrame (non-blocking) instead of setFrame(animate: true)
+    /// so the SwiftUI content animation starts immediately — no lag between
+    /// hover and visual response.
     func setExpanded(_ expanded: Bool) {
         isExpandedNow = expanded
         let size = expanded ? currentExpandedSize : compactSize
@@ -116,9 +120,8 @@ final class PillPanel: NSPanel {
         suppressSave = true
         defer { suppressSave = false }
         NSAnimationContext.runAnimationGroup { ctx in
-            ctx.duration = 0.045
-            ctx.allowsImplicitAnimation = true
-            self.setFrame(f, display: true, animate: true)
+            ctx.duration = 0.25
+            self.animator().setFrame(f, display: true)
         }
     }
 
