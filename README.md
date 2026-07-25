@@ -30,12 +30,8 @@ Download `Usage Pill.app.zip` from the
 [latest GitHub Release](https://github.com/greatdeepband/usage-pill/releases),
 unzip, and drag `Usage Pill.app` to `/Applications`.
 
-The app is signed with a local certificate, **not notarized** — on first open,
-right-click the app → **Open** → **Open**, or clear the quarantine flag:
-
-```bash
-xattr -dr com.apple.quarantine '/Applications/Usage Pill.app'
-```
+The app is signed with an Apple Developer ID and **notarized by Apple** —
+Gatekeeper opens it normally, no right-click dance needed.
 
 Enable **Launch at Login** from the gauge icon in the menu bar (works only
 from /Applications). Version history: see [CHANGELOG.md](CHANGELOG.md).
@@ -59,7 +55,7 @@ Without the cert step, builds are ad-hoc signed and each rebuild re-asks.
 
 ## Providers
 
-### Claude (plan windows)
+### Claude (plan windows + extra-usage credits)
 
 Requires a Claude **Pro/Max subscription** with
 [Claude Code](https://claude.com/claude-code) logged in on the same Mac. The
@@ -68,6 +64,10 @@ exact percentages Claude Code's `/usage` command reports. Access is **strictly
 read-only** — it never writes to the keychain, never refreshes or stores
 tokens elsewhere, and never logs them. API-key billing has no usage windows to
 show, so a Claude Code sign-in is the only supported source.
+
+When extra-usage credits are enabled on your account, a **Credits** row
+appears in the expanded view showing your monthly spend (or remaining balance
+with a drain bar when a spending cap is set).
 
 ### DeepSeek (preset)
 
@@ -115,6 +115,8 @@ Every entry includes a **Get your key →** link to the provider's key page.
   remaining-credits field (not lifetime purchased), so you get a real drain bar.
 - **MiniMax balance** — pre-fills `user/balance`; pick the available-balance
   field.
+- **Moonshot AI** — remaining USD credit balance (available balance) from the
+  Kimi platform as a drain bar.
 - **OpenAI month-to-date spend** — month-to-date spend via the billing usage
   API (needs an org admin key); uses a warn-ABOVE threshold and skips the
   drain bar because spend grows rather than drains.

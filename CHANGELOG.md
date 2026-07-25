@@ -1,5 +1,19 @@
 # Changelog
 
+## v1.2.0 — 2026-07-26
+
+New features: **Claude extra-usage credits** and **Moonshot AI balance**.
+
+**Claude extra-usage credits:** when your Anthropic account has extra-usage
+credits enabled, the expanded pill shows a Credits row below Session and Week.
+It displays your monthly spend (e.g. "€153.69 spent") or, when a spending cap
+is set, your remaining balance with a drain bar (e.g. "€346.31 of €500.00").
+The row is expanded-only — the compact pill stays clean.
+
+**Moonshot AI balance:** new verified preset in Add Provider. Paste your Kimi
+platform API key and your available USD balance appears as a drain bar, same
+pattern as DeepSeek.
+
 ## v1.1.2 — 2026-06-26
 
 Fixes two things that surfaced after a restart. **Claude no longer freezes
