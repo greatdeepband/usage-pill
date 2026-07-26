@@ -1,6 +1,21 @@
 import SwiftUI
 import UsageCore
 
+/// Motion tokens honoring the system Reduce Motion setting: state changes
+/// crossfade near-instantly instead of animating geometry (a11y rule
+/// `reduced-motion`).
+enum Motion {
+    static var reduceMotion: Bool {
+        NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+    }
+    /// Pill expand/collapse (0.25s, matching the panel's frame animation).
+    static var expand: Animation { reduceMotion ? .linear(duration: 0.01) : .easeInOut(duration: 0.25) }
+    /// Settings page push (was 0.28 easeInOut).
+    static var push: Animation { reduceMotion ? .linear(duration: 0.01) : .easeInOut(duration: 0.28) }
+    /// Hover fills in settings (kept subtle even under Reduce Motion).
+    static var hover: Animation { reduceMotion ? .linear(duration: 0.01) : .easeInOut(duration: 0.12) }
+}
+
 enum Dusk {
     static let clay = Color(red: 0xC9 / 255, green: 0xA2 / 255, blue: 0x83 / 255)
     static let dustyBlue = Color(red: 0x8F / 255, green: 0xA3 / 255, blue: 0xC2 / 255)
@@ -29,16 +44,28 @@ struct PillView: View {
     var onExpandChange: (Bool) -> Void
 
     @State private var expanded = false
+    /// Click-to-pin: when true, hover-exit does NOT collapse the card. The
+    /// pin affordance lives in the expanded card's top-trailing corner;
+    /// pinning is session-only (relaunch starts compact).
+    @State private var pinned = false
     @State private var now = Date()
     private let tick = Timer.publish(every: 1, tolerance: 0.2, on: .main, in: .common).autoconnect()
 
     var body: some View {
         content
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            .overlay(alignment: .topTrailing) {
+                if expanded { pinButton }
+            }
             .onHover { hovering in
-                withAnimation(.easeInOut(duration: 0.25)) { expanded = hovering }
-                onExpandChange(hovering)
-                if hovering && theme.showIdentity { identity.loadIfNeeded() }
+                if hovering {
+                    withAnimation(Motion.expand) { expanded = true }
+                    onExpandChange(true)
+                    if theme.showIdentity { identity.loadIfNeeded() }
+                } else if !pinned {
+                    withAnimation(Motion.expand) { expanded = false }
+                    onExpandChange(false)
+                }
             }
             .onReceive(tick) { now = $0 }
     }
@@ -55,10 +82,9 @@ struct PillView: View {
         providers.rows.filter { isVisible($0.spec.visibility) }
     }
 
-    /// Compact paddings are height-aware (the capsule's side radius grows
-    /// with the pill, so the content must move inward with it). Shared with
-    /// PillPanel via CompactGeometry — counts here MUST mirror
-    /// AppDelegate.syncPanelLayout's pinned-row/compact-section math.
+    /// Compact paddings: CONSTANT 18pt horizontal (unified 18pt corner
+    /// radius needs no capsule clearance), height-aware vertical. Counts
+    /// here MUST mirror AppDelegate.syncPanelLayout's math.
     private var compactMetrics: CompactGeometry.Metrics {
         let claudeRows = [theme.sessionVisibility, theme.weekVisibility]
             .filter { $0 == .pinned }.count
@@ -70,7 +96,8 @@ struct PillView: View {
     }
 
     @ViewBuilder private var content: some View {
-        let shape: AnyShape = expanded ? AnyShape(RoundedRectangle(cornerRadius: 18)) : AnyShape(Capsule())
+        // One silhouette in both states: RoundedRectangle 18pt, always.
+        let shape: AnyShape = AnyShape(RoundedRectangle(cornerRadius: CompactGeometry.cornerRadius))
         let showSession = isVisible(theme.sessionVisibility)
         let showWeek = isVisible(theme.weekVisibility)
         let providerRows = visibleProviderRows
@@ -86,13 +113,13 @@ struct PillView: View {
             if allRowsEmpty {
                 Text("open Settings to connect a provider")
                     .font(.system(size: 9.5))
-                    .foregroundStyle(.white.opacity(0.5))
+                    .foregroundStyle(.white.opacity(0.55))
                     .frame(maxWidth: .infinity, alignment: .center)
             } else if compactNothingPinned {
                 // Content exists but is only visible when expanded — quiet hint.
                 Text("…")
                     .font(.system(size: 9.5))
-                    .foregroundStyle(.white.opacity(0.35))
+                    .foregroundStyle(.white.opacity(0.45))
                     .frame(maxWidth: .infinity, alignment: .center)
             } else {
                 // Claude section: header + (identity strip) + visible Claude
@@ -138,8 +165,8 @@ struct PillView: View {
                 if expanded { footer }
             }
         }
-        // Expanded paddings are fixed (declared perfect); compact paddings
-        // scale with the pill's height so content clears the capsule corners.
+        // Expanded paddings are fixed (declared perfect); compact horizontal
+        // is the constant 18pt inset, vertical stays height-aware.
         .padding(.horizontal, expanded ? 16 : compactMetrics.hPad)
         .padding(.vertical, expanded ? 13 : compactMetrics.vPad)
         .background {
@@ -150,17 +177,18 @@ struct PillView: View {
             }
         }
         .clipShape(shape)
-        .overlay(shape.stroke(.white.opacity(0.12), lineWidth: 1))
+        .overlay(shape.stroke(.white.opacity(0.18), lineWidth: 1))
         .opacity(model.status == .stale(reason: .unauthorized) ? 0.75 : 1)
     }
 
-    /// Uppercased micro-caption above each section. Identity-strip caption
-    /// styling (bold, wide tracking, dim white); 8.5pt expanded, 7.5pt compact.
+    /// Uppercased micro-caption above each section. Contrast-fixed tier:
+    /// white 55% (was 38% — measured 3.3:1, below the 4.5:1 floor), tracking
+    /// tightened to 1.2 so caps read crisp at 8pt.
     private func sectionHeader(_ title: String) -> some View {
         Text(title.uppercased())
-            .font(.system(size: expanded ? 8.5 : 7.5, weight: .bold))
-            .tracking(1.6)
-            .foregroundStyle(.white.opacity(0.38))
+            .font(.system(size: expanded ? 8.5 : 8, weight: .bold))
+            .tracking(1.2)
+            .foregroundStyle(.white.opacity(0.55))
             .lineLimit(1)
     }
 
@@ -169,7 +197,7 @@ struct PillView: View {
             HStack {
                 Text(identity.email ?? "")
                     .font(.system(size: 9.5))
-                    .foregroundStyle(.white.opacity(0.55))
+                    .foregroundStyle(.white.opacity(0.65))
                     .lineLimit(1).truncationMode(.middle)
                 Spacer(minLength: 8)
                 if let badge = identity.planBadge {
@@ -178,8 +206,27 @@ struct PillView: View {
                         .foregroundStyle(Color(themeHex: theme.theme.sessionHex))
                 }
             }
-            Rectangle().fill(.white.opacity(0.08)).frame(height: 1)
+            Rectangle().fill(.white.opacity(0.12)).frame(height: 1)
         }
+    }
+
+    /// Pin/unpin the expanded card open (click-to-pin addition; hover
+    /// behavior is unchanged). Top-trailing of the expanded card.
+    private var pinButton: some View {
+        Button {
+            pinned.toggle()
+        } label: {
+            Image(systemName: pinned ? "pin.fill" : "pin")
+                .font(.system(size: 9, weight: .semibold))
+                .foregroundStyle(.white.opacity(pinned ? 0.85 : 0.5))
+                .frame(width: 22, height: 22)
+                .background(Circle().fill(.white.opacity(pinned ? 0.16 : 0.07)))
+                .contentShape(Circle())
+        }
+        .buttonStyle(PinButtonStyle())
+        .padding(8)
+        .accessibilityLabel(pinned ? "Unpin card" : "Pin card open")
+        .accessibilityHint("Keeps the expanded card open after the pointer leaves")
     }
 
     @ViewBuilder
@@ -195,27 +242,45 @@ struct PillView: View {
                     Spacer(minLength: 4)
                     Text(window == nil ? "—" : resetText)
                         .font(.system(size: 10))
-                        .foregroundStyle(.white.opacity(0.5))
+                        .foregroundStyle(.white.opacity(0.62))
                 } else {
                     Image(systemName: symbol)
                         .font(.system(size: 10, weight: .light))
-                        .foregroundStyle(base.opacity(0.7))
+                        .foregroundStyle(base.opacity(0.85))
                         .frame(width: 12)
                     bar(window: window, base: base, tone: tone)
                     Text(window.map { "\(Int($0.utilization.rounded()))%" } ?? "—")
-                        .font(.system(size: 10.5, weight: .regular).monospacedDigit())
-                        .foregroundStyle(.white.opacity(0.75))
-                        .frame(width: 30, alignment: .trailing)
+                        .font(.system(size: 10.5, weight: tone == .normal ? .regular : .semibold).monospacedDigit())
+                        .foregroundStyle(tone == .normal ? .white.opacity(0.88) : Dusk.color(for: tone, base: base))
+                        .frame(width: 34, alignment: .trailing)
                 }
             }
             if expanded { bar(window: window, base: base, tone: tone) }
         }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(barRowA11y(window: window, tone: tone, label: label, resetText: resetText))
+    }
+
+    private func barRowA11y(window: UsageWindow?, tone: BarTone, label: String, resetText: String) -> String {
+        var parts = [label]
+        if let window {
+            parts.append("\(Int(window.utilization.rounded())) percent")
+        } else {
+            parts.append("no data")
+        }
+        if expanded, window != nil { parts.append(resetText) }
+        switch tone {
+        case .normal: break
+        case .warning: parts.append("warning")
+        case .critical: parts.append("critical")
+        }
+        return parts.joined(separator: ", ")
     }
 
     private func bar(window: UsageWindow?, base: Color, tone: BarTone) -> some View {
         GeometryReader { geo in
             ZStack(alignment: .leading) {
-                Capsule().fill(.white.opacity(0.12))
+                Capsule().fill(.white.opacity(0.18))
                 if let window {
                     Capsule()
                         .fill(Dusk.color(for: tone, base: base))
@@ -300,7 +365,7 @@ struct PillView: View {
             Spacer()
             Text(oldestSuccessSeconds.map(CountdownFormatter.updatedAgo) ?? "no data yet")
                 .font(.system(size: 9.5))
-                .foregroundStyle(model.isDataOld ? Dusk.amber.opacity(0.9) : .white.opacity(0.4))
+                .foregroundStyle(model.isDataOld ? Dusk.amber.opacity(0.9) : .white.opacity(0.55))
         }
     }
 
@@ -332,6 +397,14 @@ struct PillView: View {
         }
         guard let oldest = dates.min() else { return nil }
         return now.timeIntervalSince(oldest)
+    }
+}
+
+/// Press feedback for the pin affordance (no layout shift, opacity only).
+private struct PinButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .opacity(configuration.isPressed ? 0.6 : 1)
     }
 }
 
@@ -371,10 +444,12 @@ private struct ProviderRow: View {
                 }
                 if !isSpend { drainBar }
             }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(providerA11y(value: expandedValueText))
         } else {
             HStack(spacing: 9) {
                 ChiselIcon()
-                    .fill(rowTint.opacity(0.7))
+                    .fill(rowTint.opacity(0.85))
                     .frame(width: 10, height: 10)
                     .frame(width: 12)
                 if isSpend {
@@ -393,7 +468,15 @@ private struct ProviderRow: View {
                     .foregroundStyle(rowTint)
                     .frame(minWidth: 30, alignment: .trailing)
             }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(providerA11y(value: valueText))
         }
+    }
+
+    private func providerA11y(value: String) -> String {
+        var parts = [spec.displayName, value]
+        if let (caption, _) = staleCaption { parts.append(caption) }
+        return parts.joined(separator: ", ")
     }
 
     /// Per-launch credit drain: full at baseline, empties as value falls.
@@ -401,7 +484,7 @@ private struct ProviderRow: View {
     private var drainBar: some View {
         GeometryReader { geo in
             ZStack(alignment: .leading) {
-                Capsule().fill(.white.opacity(0.12))
+                Capsule().fill(.white.opacity(0.18))
                 if let fraction = rowModel.fraction {
                     Capsule()
                         .fill(rowTint)

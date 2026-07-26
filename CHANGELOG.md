@@ -1,5 +1,30 @@
 # Changelog
 
+## v1.3.0 — 2026-07-26
+
+UI/UX overhaul (designed with UI/UX Pro Max, approved via mockup review).
+**One silhouette:** the compact pill is no longer a capsule that morphs into
+a rounded card on hover — both states are the same 18pt rounded rectangle
+and expansion is pure vertical growth. Both states share one width — 263pt,
+wide enough that even a semibold "100%" in the alert state never folds —
+while the bar keeps the capsule era's full length; heights are unchanged.
+Compact rows are rebalanced too: values are content-sized instead of a
+fixed slot, so short numbers like "2%" no longer leave a dead gap before
+the percentage — the bar takes every spare point. **Everything
+legible:** section headers, the "updated ago" footer, reset captions, icons,
+and bar tracks all moved up to measured WCAG-safe tiers — the 3.3–3.5:1
+texts that failed contrast are now 5:1 and above. **The red alert is no
+longer hue-only:** at warning/critical the compact number itself takes the
+tone and weight, so you can see which row triggered it. **Click-to-pin:**
+a pin affordance in the expanded card keeps it open after the pointer
+leaves; hover still works exactly as before. Settings got row hover/press
+feedback, a real 28×28 reorder target, amber "no key — click to add" states
+at list level, focus rings on text fields, sentence-case footers, and a warn
+field that tells you when input isn't a number instead of silently turning
+the warning off. Plus Reduce Motion support (expand/collapse and page pushes
+snap instead of animating) and VoiceOver labels that read each row as one
+sentence.
+
 ## v1.2.0 — 2026-07-26
 
 New features: **Claude extra-usage credits** and **Moonshot AI balance**.

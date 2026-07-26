@@ -38,13 +38,15 @@ struct CardDivider: View {
 }
 
 /// Section header caption above a card (Form-header replacement).
+/// Pinned at white 58% instead of floating .secondary — stable ~5:1
+/// contrast across macOS versions (ux-review 2026-07-26).
 struct CardHeader: View {
     let text: String
     init(_ text: String) { self.text = text }
     var body: some View {
         Text(text)
             .font(.caption.weight(.medium))
-            .foregroundStyle(.secondary)
+            .foregroundStyle(.white.opacity(0.58))
             .padding(.leading, 14)
     }
 }
@@ -52,7 +54,7 @@ struct CardHeader: View {
 /// Footnote caption under a card (Form-footer replacement).
 struct CardFooter: View {
     let text: String
-    var color: Color = .secondary
+    var color: Color = .white.opacity(0.58)
     var body: some View {
         Text(text)
             .font(.caption)
@@ -65,19 +67,47 @@ struct CardFooter: View {
 // MARK: - Capsule fields
 
 /// Plain-style text field inside a capsule (black 30%, hairline border).
+/// Focused fields get a 2px accent ring — plain-style fields otherwise
+/// have no focus indicator (a11y rule `focus-states`).
 struct CapsuleFieldChrome: ViewModifier {
+    @FocusState private var focused: Bool
+
     func body(content: Content) -> some View {
         content
             .textFieldStyle(.plain)
+            .focused($focused)
             .padding(.horizontal, 10)
             .padding(.vertical, 5)
             .background(Capsule().fill(SettingsStyle.fieldFill))
-            .overlay(Capsule().stroke(SettingsStyle.hairline, lineWidth: 1))
+            .overlay(Capsule().stroke(
+                focused ? Color.accentColor.opacity(0.9) : SettingsStyle.hairline,
+                lineWidth: focused ? 2 : 1
+            ))
     }
 }
 
 extension View {
     func capsuleField() -> some View { modifier(CapsuleFieldChrome()) }
+}
+
+// MARK: - Row button style (hover/press feedback)
+
+/// Card-row interactivity: hover lifts the row with a white-5% fill, press
+/// deepens to 8%, on a 12pt radius that matches the card's softness. No
+/// layout shift — background only (press-feedback rule).
+struct CardRowButtonStyle: ButtonStyle {
+    @State private var hovering = false
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .background(
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(.white.opacity(configuration.isPressed ? 0.08 : (hovering ? 0.05 : 0)))
+            )
+            .onHover { hovering in
+                withAnimation(Motion.hover) { self.hovering = hovering }
+            }
+    }
 }
 
 // MARK: - Capsule buttons
@@ -189,7 +219,7 @@ struct SettingsPage<Content: View, Buttons: View>: View {
     }
 
     private var cardStack: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 12) {
             content
         }
         .padding(.horizontal, 16)

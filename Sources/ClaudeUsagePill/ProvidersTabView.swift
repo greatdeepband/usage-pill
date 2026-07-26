@@ -125,7 +125,7 @@ struct ProvidersTabView: View {
             // Re-sync the local copy either way — harmless when unchanged.
             specs = specStore.load()
         }
-        withAnimation(.easeInOut(duration: 0.28)) { page = newPage }
+        withAnimation(Motion.push) { page = newPage }
         onTitle(Self.title(for: newPage))
     }
 
@@ -179,13 +179,14 @@ struct ProvidersTabView: View {
                 Spacer(minLength: 12)
                 Text(claudeSummary)
                     .font(.callout)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.white.opacity(0.58))
                 chevron
             }
-            .padding(.vertical, 9)
+            .padding(.vertical, 7)
+            .padding(.horizontal, 8)
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(CardRowButtonStyle())
     }
 
     private func providerRow(_ spec: ProviderSpec) -> some View {
@@ -194,19 +195,21 @@ struct ProvidersTabView: View {
                 navigate(to: .provider(spec))
             } label: {
                 HStack(spacing: 8) {
-                    rowText(title: spec.displayName, subtitle: subtitle(for: spec))
+                    providerRowText(spec)
                     Spacer(minLength: 12)
                     Text(visibilityRowLabel(spec.visibility))
                         .font(.callout)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.white.opacity(0.58))
                     chevron
                 }
+                .padding(.vertical, 7)
+                .padding(.horizontal, 8)
                 .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(CardRowButtonStyle())
             moveMenu(for: spec)
         }
-        .padding(.vertical, 9)
+        .padding(.vertical, 2)
     }
 
     private var addRow: some View {
@@ -214,10 +217,11 @@ struct ProvidersTabView: View {
             navigate(to: .addFlow)
         } label: {
             Label("Add Provider…", systemImage: "plus")
-                .padding(.vertical, 9)
+                .padding(.vertical, 7)
+                .padding(.horizontal, 8)
                 .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(CardRowButtonStyle())
         .foregroundStyle(Color.accentColor)
     }
 
@@ -226,14 +230,33 @@ struct ProvidersTabView: View {
             Text(title)
             Text(subtitle)
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.white.opacity(0.58))
+        }
+    }
+
+    /// Provider row title + subtitle. A missing key is a degraded state —
+    /// it surfaces amber with a next step at LIST level instead of hiding
+    /// one page deep (error-clarity rule).
+    private func providerRowText(_ spec: ProviderSpec) -> some View {
+        let hasKey = keyStore.loadKey(for: spec.id) != nil
+        return VStack(alignment: .leading, spacing: 2) {
+            Text(spec.displayName)
+            if hasKey {
+                Text(subtitle(for: spec))
+                    .font(.caption)
+                    .foregroundStyle(.white.opacity(0.58))
+            } else {
+                (Text(subtitleBase(for: spec) + " · ").foregroundStyle(.white.opacity(0.58))
+                    + Text("no key — click to add").foregroundStyle(Dusk.amber))
+                    .font(.caption)
+            }
         }
     }
 
     private var chevron: some View {
         Image(systemName: "chevron.right")
             .font(.caption.weight(.semibold))
-            .foregroundStyle(.tertiary)
+            .foregroundStyle(.white.opacity(0.5))
     }
 
     private func moveMenu(for spec: ProviderSpec) -> some View {
@@ -250,9 +273,14 @@ struct ProvidersTabView: View {
             }
             .disabled(index == specs.count - 1)
         } label: {
+            // 28×28 chip: a real click target instead of a caption-size
+            // precision glyph (no-precision-required rule).
             Image(systemName: "chevron.up.chevron.down")
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.white.opacity(0.58))
+                .frame(width: 28, height: 28)
+                .background(RoundedRectangle(cornerRadius: 8).fill(.white.opacity(0.07)))
+                .overlay(RoundedRectangle(cornerRadius: 8).stroke(.white.opacity(0.10), lineWidth: 1))
         }
         .menuIndicator(.hidden)
         .buttonStyle(.borderless)
@@ -291,22 +319,29 @@ struct ProvidersTabView: View {
         }
     }
 
-    /// e.g. "balance · warn under $5 · key ••••a4e6". Only the keychain's
-    /// MASKED form ever reaches the UI. Spend rows read "spend · warn above"
-    /// (their threshold is a warn-ABOVE amount).
-    private func subtitle(for spec: ProviderSpec) -> String {
+    /// e.g. "balance · warn under $5" — everything except the key state.
+    /// Spend rows read "spend · warn above" (their threshold is a warn-ABOVE
+    /// amount).
+    private func subtitleBase(for spec: ProviderSpec) -> String {
         let isSpend = spec.adapter == .openAISpend
         var parts = [isSpend ? "spend" : (spec.valueKind == .currency ? "balance" : "number")]
         if let warn = spec.warnBelow {
             parts.append("warn \(isSpend ? "above" : "under") "
                 + "\(currencySymbol(spec.currencyCode))\(trimmedNumber(warn))")
         }
-        if let key = keyStore.loadKey(for: spec.id) {
-            parts.append("key \(ProviderKeyStore.masked(key))")
-        } else {
-            parts.append("no key")
-        }
         return parts.joined(separator: " · ")
+    }
+
+    /// subtitleBase + key state. Only the keychain's MASKED form ever
+    /// reaches the UI.
+    private func subtitle(for spec: ProviderSpec) -> String {
+        var base = subtitleBase(for: spec)
+        if let key = keyStore.loadKey(for: spec.id) {
+            base += " · key \(ProviderKeyStore.masked(key))"
+        } else {
+            base += " · no key"
+        }
+        return base
     }
 
     // MARK: persistence
@@ -377,7 +412,7 @@ struct ClaudeSettingsPage: View {
                     .toggleStyle(.switch)
                     .padding(.vertical, 7)
             }
-            CardFooter(text: "both bars turn dusk red when the week crosses 90%")
+            CardFooter(text: "Both bars turn dusk red when the week crosses 90%.")
             SettingsCard {
                 Toggle("Show account & plan", isOn: $themeStore.showIdentity)
                     .toggleStyle(.switch)
@@ -408,10 +443,11 @@ struct ClaudeSettingsPage: View {
                     Text("Remove Provider…")
                         .foregroundStyle(.red)
                         .frame(maxWidth: .infinity)
-                        .padding(.vertical, 9)
+                        .padding(.vertical, 7)
+                        .padding(.horizontal, 8)
                         .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(CardRowButtonStyle())
             }
         } buttons: {
             Button("Back") {
@@ -479,7 +515,7 @@ struct ClaudeSettingsPage: View {
             .frame(width: 60, height: 28)
             .clipShape(Capsule())
             .overlay(swatchRing(selected: themeStore.palette == p))
-            Text(p.rawValue.capitalized).font(.system(size: 9)).foregroundStyle(.secondary)
+            Text(p.rawValue.capitalized).font(.system(size: 9)).foregroundStyle(.white.opacity(0.6))
         }
         .onTapGesture { themeStore.select(p) }
     }
@@ -495,16 +531,17 @@ struct ClaudeSettingsPage: View {
             .frame(width: 60, height: 28)
             .clipShape(Capsule())
             .overlay(swatchRing(selected: themeStore.palette == .custom))
-            Text("Custom").font(.system(size: 9)).foregroundStyle(.secondary)
+            Text("Custom").font(.system(size: 9)).foregroundStyle(.white.opacity(0.6))
         }
     }
 }
 
 /// Capsule swatch selection ring (Direction-2: tiles are capsules, like the
-/// pill itself).
+/// pill itself). Unselected ring lifted to 14% so it survives the
+/// pill-dark backdrop (was 10% — nearly invisible).
 func swatchRing(selected: Bool) -> some View {
     Capsule()
-        .stroke(selected ? Color.accentColor : Color.primary.opacity(0.1),
+        .stroke(selected ? Color.accentColor : Color.primary.opacity(0.14),
                 lineWidth: selected ? 2 : 1)
 }
 
@@ -601,7 +638,7 @@ struct ProviderAccentSwatchRow: View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Palette")
                 .font(.caption.weight(.medium))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.white.opacity(0.58))
             HStack(alignment: .top, spacing: 0) {
                 swatch(for: .sage)
                 Spacer()
@@ -626,9 +663,9 @@ struct ProviderAccentSwatchRow: View {
             .frame(width: 60, height: 28)
             .clipShape(Capsule())
             .overlay(swatchRing(selected: accent == p))
-            Text(p.label).font(.system(size: 9)).foregroundStyle(.secondary)
+            Text(p.label).font(.system(size: 9)).foregroundStyle(.white.opacity(0.6))
             if p == .sage {
-                Text("default").font(.system(size: 8)).foregroundStyle(.tertiary)
+                Text("default").font(.system(size: 8.5)).foregroundStyle(.white.opacity(0.5))
             }
         }
         .onTapGesture {
@@ -648,7 +685,7 @@ struct ProviderAccentSwatchRow: View {
             .frame(width: 60, height: 28)
             .clipShape(Capsule())
             .overlay(swatchRing(selected: accent == .custom))
-            Text("Custom").font(.system(size: 9)).foregroundStyle(.secondary)
+            Text("Custom").font(.system(size: 9)).foregroundStyle(.white.opacity(0.6))
         }
     }
 }
@@ -673,6 +710,7 @@ struct ProviderSettingsPage: View {
     @State private var name: String
     @State private var keyField = ""
     @State private var warnText: String
+    @State private var warnError: String?
     @State private var accent: ProviderAccent
     @State private var color: Color
     @State private var visibility: ProviderSpec.Visibility
@@ -739,6 +777,7 @@ struct ProviderSettingsPage: View {
                             .multilineTextAlignment(.trailing)
                             .capsuleField()
                             .frame(width: 80)
+                            .onChange(of: warnText) { warnError = nil }
                     }
                 }
                 CardDivider()
@@ -754,6 +793,9 @@ struct ProviderSettingsPage: View {
                     CapsulePicker(options: visibilityOptions, selection: $visibility)
                 }
             }
+            if let warnError {
+                CardFooter(text: warnError, color: Dusk.amber)
+            }
             CardFooter(text: isSpend
                 ? "At or above the warning amount, this row turns amber."
                 : "Below the warning amount, this row turns amber regardless of its color.")
@@ -764,10 +806,11 @@ struct ProviderSettingsPage: View {
                     Text("Remove Provider…")
                         .foregroundStyle(.red)
                         .frame(maxWidth: .infinity)
-                        .padding(.vertical, 9)
+                        .padding(.vertical, 7)
+                        .padding(.horizontal, 8)
                         .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(CardRowButtonStyle())
             }
         } buttons: {
             Button("Back") { onClose() } // discard pending edits
@@ -802,12 +845,19 @@ struct ProviderSettingsPage: View {
         var updated = spec
         let trimmedName = name.trimmingCharacters(in: .whitespaces)
         if !trimmedName.isEmpty { updated.displayName = trimmedName }
-        // Empty or unparseable → nil (warning off). Accept a comma decimal.
-        // Negative thresholds can never fire — treat them as off too.
-        updated.warnBelow = Double(
-            warnText.trimmingCharacters(in: .whitespaces)
-                .replacingOccurrences(of: ",", with: ".")
-        ).flatMap { $0 > 0 ? $0 : nil }
+        // Empty field → nil (warning off). Anything non-empty must be a
+        // positive number — comma decimals accepted. Garbage used to fall
+        // silently to "off"; now it blocks with an amber footnote instead
+        // (error-clarity rule).
+        let trimmedWarn = warnText.trimmingCharacters(in: .whitespaces)
+        if trimmedWarn.isEmpty {
+            updated.warnBelow = nil
+        } else if let parsed = Double(trimmedWarn.replacingOccurrences(of: ",", with: ".")), parsed > 0 {
+            updated.warnBelow = parsed
+        } else {
+            warnError = "Enter a positive number, or clear the field to turn the warning off."
+            return
+        }
         updated.visibility = visibility
         switch accent {
         case .sage:

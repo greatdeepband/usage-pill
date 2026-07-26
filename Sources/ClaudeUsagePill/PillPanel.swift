@@ -31,8 +31,11 @@ final class PillPanel: NSPanel {
     // formula (66/107/148/189 vs 68/108.8/149.6/190.4 for 0–3 providers) with
     // exact per-row deltas — the slack sits below the top-aligned capsule, so
     // the conservative direction is harmless and the constants are kept.
-    // Defaults (2 Claude rows + 1 CLAUDE header): compact 260.5×68 (hPad
-    // 21.25, vPad 9.5), expanded 250×122.
+    // v1.2 unified silhouette (RoundedRectangle 18pt both states): compact
+    // horizontal padding is a CONSTANT 18pt, width a constant 263 — heights
+    // unchanged.
+    // Defaults (2 Claude rows + 1 CLAUDE header): compact 263×68 (hPad 18,
+    // vPad 9.5), expanded 250×122.
     private var compactSize: NSSize {
         let m = CompactGeometry.metrics(
             rows: max(pinnedClaudeRows, 0) + max(pinnedProviderRows, 0),
@@ -119,9 +122,16 @@ final class PillPanel: NSPanel {
 
         suppressSave = true
         defer { suppressSave = false }
-        NSAnimationContext.runAnimationGroup { ctx in
-            ctx.duration = 0.25
-            self.animator().setFrame(f, display: true)
+        if Motion.reduceMotion {
+            // Reduce Motion: snap to the new frame instead of animating growth.
+            setFrame(f, display: true, animate: false)
+        } else {
+            // Non-blocking frame animation (0.25s) — opens immediately; a
+            // blocking setFrame(animate:) would stall the main thread.
+            NSAnimationContext.runAnimationGroup { ctx in
+                ctx.duration = 0.25
+                self.animator().setFrame(f, display: true)
+            }
         }
     }
 

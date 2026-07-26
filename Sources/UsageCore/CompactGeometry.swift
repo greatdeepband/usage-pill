@@ -4,21 +4,18 @@ import CoreGraphics
 /// PillView (content paddings) and PillPanel (window size) so the two can
 /// never drift apart.
 ///
-/// Why paddings scale with height: the compact pill is a Capsule, so its
-/// side radius is height/2. The classic v1 pill was 250×50 (radius 25) and
-/// fixed paddings of 16/8 cleared the corner curvature fine. With section
-/// headers + provider rows the compact height grows toward ~100+, the side
-/// radius grows with it, and fixed paddings would leave the content's
-/// corners INSIDE the curve (visually clipped/crowded). So both paddings
-/// grow linearly with the height beyond the classic 50, and the window
-/// width grows by the extra horizontal padding on both sides so the bars
-/// keep their classic length.
+/// Shape contract (v1.2): the pill is a RoundedRectangle with a FIXED 18 pt
+/// corner radius in BOTH states — compact and expanded share one silhouette
+/// and expansion reads as pure vertical growth (no capsule→rect morph).
+/// Because the corner radius no longer scales with height, the horizontal
+/// padding is a CONSTANT 18 pt for every row/section count: the 18 pt inset
+/// clears the 18 pt corner curve at every realistic vPad (see the contract
+/// test), and the width is a constant 254 pt so the inner bar column keeps
+/// its classic 218 pt length (254 − 2·18 = 250 − 2·16).
 ///
-/// Corner-clearance contract (unit-tested in CompactGeometryTests): at the
-/// content's top-left corner (hPad, vPad), the capsule edge's horizontal
-/// inset is r − sqrt(r² − (r − vPad)²) with r = height/2; hPad must exceed
-/// that inset by ≥ 2 pt for every realistic row/section count. The 0.35 and
-/// 0.10 factors are implementation — the test is the contract.
+/// Vertical rhythm is unchanged from the capsule era: vPad still grows
+/// 0.10 pt per pt of height beyond the classic 50, so every compact height
+/// is byte-identical to v1.1.x.
 public enum CompactGeometry {
     public struct Metrics: Equatable, Sendable {
         public let height: CGFloat
@@ -33,6 +30,14 @@ public enum CompactGeometry {
     public static let classicHPad: CGFloat = 16
     public static let classicVPad: CGFloat = 8
 
+    /// v1.2 unified-silhouette constants: fixed corner radius and a constant
+    /// horizontal inset that clears it; width follows so bars stay roomy.
+    public static let cornerRadius: CGFloat = 18
+    public static let hPad: CGFloat = 18
+    /// 263pt: the alert-state value ("100%" semibold) needs a 34pt slot and
+    /// the bar must not pay for it (folding reported on 254).
+    public static let width: CGFloat = 263
+
     // Content constants MEASURED via NSHostingView.fittingSize against the
     // real compact layout (see the comment block in PillPanel): each compact
     // row costs 19 pt and each section header 15 pt over a 12 pt base, where
@@ -45,19 +50,18 @@ public enum CompactGeometry {
     /// `rows` = compact-visible (pinned) Claude + provider rows;
     /// `sections` = section headers visible in compact mode.
     public static func metrics(rows: Int, sections: Int) -> Metrics {
-        // Estimate with the CLASSIC paddings first (this is the pre-v2 height
-        // formula), then derive the padding growth from that estimate — the
-        // real height just swaps the classic vertical padding for the grown one.
+        // Height estimate with the CLASSIC vertical padding first, then swap
+        // in the grown vPad — identical to the capsule-era formula, so
+        // heights never jump for existing configurations.
         let estimated = max(
             minHeight,
             baseHeight + CGFloat(max(rows, 0)) * rowHeight + CGFloat(max(sections, 0)) * headerHeight
         )
         let extraHeight = max(0, estimated - classicHeight)
-        let hPad = classicHPad + extraHeight * 0.35
         let vPad = classicVPad + extraHeight * 0.10
         return Metrics(
             height: estimated + 2 * (vPad - classicVPad),
-            width: classicWidth + 2 * (hPad - classicHPad),
+            width: width,
             hPad: hPad,
             vPad: vPad
         )

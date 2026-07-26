@@ -3,55 +3,66 @@ import Foundation
 import Testing
 @testable import UsageCore
 
-/// Capsule edge inset at vertical offset `y` from the top edge, for side
-/// radius `r` = height/2: the corner circle is centered at (r, r), so at
+/// Rounded-rect corner inset at vertical offset `y` from the top edge, for
+/// corner radius `r`: the corner circle is centered at (r, r), so at
 /// vertical distance d = r − y from the center the edge sits at
 /// x = r − sqrt(r² − d²). Below the corner circle (y ≥ r) the edge is flat.
-private func capsuleInset(atY y: CGFloat, radius r: CGFloat) -> CGFloat {
+private func cornerInset(atY y: CGFloat, radius r: CGFloat) -> CGFloat {
     guard y < r else { return 0 }
     let d = r - y
     return r - sqrt(max(0, r * r - d * d))
 }
 
 /// THE geometry contract: for every realistic compact configuration the
-/// content's top-left corner (hPad, vPad) must clear the capsule's corner
-/// curve by at least 2 pt of grace — i.e. the formula can never regress
-/// into corner clipping. (All four corners are symmetric.)
+/// content's top-left corner (hPad, vPad) must clear the 18 pt rounded-rect
+/// corner curve by at least 2 pt of grace. (All four corners are symmetric.)
 @Test(arguments: 2...8, 0...4)
-func compactContentClearsCapsuleCorner(rows: Int, sections: Int) {
+func compactContentClearsRoundedCorner(rows: Int, sections: Int) {
     let m = CompactGeometry.metrics(rows: rows, sections: sections)
-    let inset = capsuleInset(atY: m.vPad, radius: m.height / 2)
+    let inset = cornerInset(atY: m.vPad, radius: CompactGeometry.cornerRadius)
     #expect(
         m.hPad >= inset + 2,
-        "rows=\(rows) sections=\(sections): hPad \(m.hPad) must clear capsule inset \(inset) by ≥ 2pt"
+        "rows=\(rows) sections=\(sections): hPad \(m.hPad) must clear corner inset \(inset) by ≥ 2pt"
     )
 }
 
-@Test func classicTwoRowHeaderlessPillIsExactlyV1() {
-    let m = CompactGeometry.metrics(rows: 2, sections: 0)
-    #expect(m.height == 50)
-    #expect(m.width == 250)
-    #expect(m.hPad == 16)
-    #expect(m.vPad == 8)
-}
-
-/// Window width grows by exactly the extra padding on both sides, so the
-/// inner content column (bars) keeps its classic 218 pt length.
-@Test(arguments: 2...8, 0...4)
-func widthGrowsWithPaddingSoBarsNeverShrink(rows: Int, sections: Int) {
+/// The unified-silhouette compact pill: constant 18 pt inset and constant
+/// 263 pt width for every configuration (no more capsule-driven growth).
+@Test(arguments: 0...8, 0...4)
+func paddingAndWidthAreConstant(rows: Int, sections: Int) {
     let m = CompactGeometry.metrics(rows: rows, sections: sections)
-    #expect(m.width == 250 + 2 * (m.hPad - 16))
-    #expect(abs((m.width - 2 * m.hPad) - (250 - 2 * 16)) < 0.0001)
+    #expect(m.hPad == 18)
+    #expect(m.width == 263)
 }
 
-/// Paddings and width never go below the classic values, and the height
-/// floor for a content-less pill ("…" / "open Settings") is preserved.
-@Test func emptyPillKeepsClassicFloor() {
-    let m = CompactGeometry.metrics(rows: 0, sections: 0)
-    #expect(m.height == 30)
-    #expect(m.width == 250)
-    #expect(m.hPad == 16)
-    #expect(m.vPad == 8)
+/// The bar never pays for the value slot: bar flex length (width minus
+/// insets, 12pt icon slot, spacings, 34pt value slot) stays at or above the
+/// classic 158 pt the capsule era guaranteed.
+@Test(arguments: 2...8, 0...4)
+func barNeverShrinksBelowClassic(rows: Int, sections: Int) {
+    let m = CompactGeometry.metrics(rows: rows, sections: sections)
+    let barFlex = m.width - 2 * m.hPad - 12 - 9 - 9 - 34
+    #expect(barFlex >= 158, "rows=\(rows) sections=\(sections): bar \(barFlex)pt < classic 158pt")
+}
+
+/// Heights are byte-identical to the capsule era: the vPad growth formula is
+/// unchanged, so no existing configuration jumps when the app updates.
+@Test func heightsMatchCapsuleEra() {
+    // (rows, sections, capsule-era height)
+    let cases: [(Int, Int, CGFloat)] = [
+        (2, 1, 68),    // default: two Claude rows + CLAUDE header
+        (2, 0, 50),    // classic v1 two-row headerless
+        (0, 0, 30),    // empty floor
+        (3, 2, 108.8),
+        (5, 4, 190.4),
+    ]
+    for (rows, sections, expected) in cases {
+        let m = CompactGeometry.metrics(rows: rows, sections: sections)
+        #expect(
+            abs(m.height - expected) < 0.05,
+            "rows=\(rows) sections=\(sections): height \(m.height) != capsule-era \(expected)"
+        )
+    }
 }
 
 @Test func negativeCountsClampToZero() {
