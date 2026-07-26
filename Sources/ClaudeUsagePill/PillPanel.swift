@@ -35,7 +35,7 @@ final class PillPanel: NSPanel {
     // horizontal padding is a CONSTANT 18pt, width a constant 263 — heights
     // unchanged.
     // Defaults (2 Claude rows + 1 CLAUDE header): compact 263×68 (hPad 18,
-    // vPad 9.5), expanded 250×122.
+    // vPad 9.5), expanded 263×122 — SAME width in both states.
     private var compactSize: NSSize {
         let m = CompactGeometry.metrics(
             rows: max(pinnedClaudeRows, 0) + max(pinnedProviderRows, 0),
@@ -48,7 +48,8 @@ final class PillPanel: NSPanel {
         let rows = (max(expandedClaudeRows, 0) + max(expandedProviderRows, 0)) * 32
         var h = max(44, 38 + CGFloat(rows) + CGFloat(max(expandedSections, 0) * 20))
         if identityEnabled { h += 30 }
-        return NSSize(width: 250, height: h)
+        // Same width as compact — one silhouette, expansion is vertical-only.
+        return NSSize(width: CompactGeometry.width, height: h)
     }
 
     /// Tracks the last state requested through setExpanded — applyRowCounts
