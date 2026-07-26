@@ -14,9 +14,15 @@ countdowns, full balances, and data freshness.
 </p>
 
 - Floats above every window, on every Space, including over full-screen apps.
+- One silhouette in both states: the same rounded card, compact and expanded —
+  hover growth is purely vertical. A pin button keeps the card open when you
+  need both hands back.
 - Drag it anywhere; the position survives restarts and display changes.
 - Claude bars turn muted amber at 80% and soft red at 95%; **Red Alert at 90%
-  weekly** (default on) turns both bars red when the week crosses 90%.
+  weekly** (default on) turns both bars red when the week crosses 90% — and
+  the number itself takes the alarm tone, never hue alone.
+- Legible by measurement: every text tier clears WCAG 4.5:1, plus Reduce
+  Motion and VoiceOver support.
 - Per-provider visibility: pin rows to the compact pill, show them only when
   expanded, or hide them entirely (hidden Claude rows aren't even fetched).
 - Themeable: Dusk/Mist/Sage palettes or fully custom colors, per-provider

@@ -110,20 +110,20 @@
   }
   @keyframes float { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
   @media (prefers-reduced-motion: reduce) { .pill { animation: none; } }
-  .pill-section { font-size: 10px; font-weight: 700; letter-spacing: 0.12em; color: #8a8a93; margin: 12px 0 9px; }
+  .pill-section { font-size: 10px; font-weight: 700; letter-spacing: 0.12em; color: #9c9ca4; margin: 12px 0 9px; }
   .pill-section:first-child { margin-top: 2px; }
   .meter { margin-bottom: 4px; }
   .meter-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 7px; }
   .meter-head .name { font-size: 13px; font-weight: 600; color: #f0f0f4; }
   .meter-head .name.credits { color: #67d98a; }
-  .meter-head .status { font-size: 11px; color: #8a8a93; font-variant-numeric: tabular-nums; }
-  .bar { height: 6px; border-radius: 3px; background: rgba(255, 255, 255, 0.10); overflow: hidden; }
+  .meter-head .status { font-size: 11px; color: #a2a2ac; font-variant-numeric: tabular-nums; }
+  .bar { height: 6px; border-radius: 3px; background: rgba(255, 255, 255, 0.18); overflow: hidden; }
   .bar > i { display: block; height: 100%; border-radius: 3px; }
   .fill-session > i { width: 30%; background: linear-gradient(90deg, #d8b48c, #c9a27e); }
   .fill-week    > i { width: 60%; background: linear-gradient(90deg, #a9bbd8, #8fa6c8); }
   .fill-credits > i { width: 100%; background: linear-gradient(90deg, #67d98a, #34c759); }
-  .pill-divider { height: 1px; background: rgba(255, 255, 255, 0.08); margin: 14px 0; }
-  .pill-updated { font-size: 10px; color: #76767e; text-align: right; margin-top: 14px; }
+  .pill-divider { height: 1px; background: rgba(255, 255, 255, 0.12); margin: 14px 0; }
+  .pill-updated { font-size: 10px; color: #9c9ca4; text-align: right; margin-top: 14px; }
 
   /* ---------- Sections ---------- */
   section { padding: 72px 0; }
@@ -256,7 +256,7 @@
     <p class="section-sub">Real screenshots — the pill, and the settings behind it.</p>
     <div class="shots">
       <figure class="shot">
-        <img src="img/pill.png" alt="The Usage Pill widget: Claude session resets in 2h 14m, Week resets Sun 07:00, and a DeepSeek balance of $43.16" loading="lazy" />
+        <img src="img/pill.png" alt="The Usage Pill widget hover-expanded: Claude Session at 3% and Week at 0% with reset countdowns, on the unified rounded-card silhouette" loading="lazy" />
         <figcaption>The pill — Claude windows plus a live DeepSeek balance, always on top.</figcaption>
       </figure>
       <figure class="shot">
