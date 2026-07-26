@@ -232,7 +232,7 @@ struct PillView: View {
     @ViewBuilder
     private func barRow(window: UsageWindow?, base: Color, tone: BarTone, symbol: String, label: String, resetText: String) -> some View {
         VStack(alignment: .leading, spacing: 3) {
-            HStack(spacing: 9) {
+            HStack(spacing: 6) {
                 // Icons are a compact-only device; expanded rows lead with
                 // their text label under the section header (Task 18a).
                 if expanded {
@@ -249,10 +249,13 @@ struct PillView: View {
                         .foregroundStyle(base.opacity(0.85))
                         .frame(width: 12)
                     bar(window: window, base: base, tone: tone)
+                    // Content-sized value (no fixed slot): the bar takes
+                    // every spare point — a fixed slot left a dead gap
+                    // before short values like "2%".
                     Text(window.map { "\(Int($0.utilization.rounded()))%" } ?? "—")
                         .font(.system(size: 10.5, weight: tone == .normal ? .regular : .semibold).monospacedDigit())
                         .foregroundStyle(tone == .normal ? .white.opacity(0.88) : Dusk.color(for: tone, base: base))
-                        .frame(width: 34, alignment: .trailing)
+                        .fixedSize()
                 }
             }
             if expanded { bar(window: window, base: base, tone: tone) }
@@ -447,7 +450,7 @@ private struct ProviderRow: View {
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(providerA11y(value: expandedValueText))
         } else {
-            HStack(spacing: 9) {
+            HStack(spacing: 6) {
                 ChiselIcon()
                     .fill(rowTint.opacity(0.85))
                     .frame(width: 10, height: 10)
@@ -466,7 +469,7 @@ private struct ProviderRow: View {
                 Text(valueText)
                     .font(.system(size: 10.5).monospacedDigit())
                     .foregroundStyle(rowTint)
-                    .frame(minWidth: 30, alignment: .trailing)
+                    .fixedSize()
             }
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(providerA11y(value: valueText))

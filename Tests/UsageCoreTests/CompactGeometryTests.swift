@@ -35,13 +35,13 @@ func paddingAndWidthAreConstant(rows: Int, sections: Int) {
     #expect(m.width == 263)
 }
 
-/// The bar never pays for the value slot: bar flex length (width minus
-/// insets, 12pt icon slot, spacings, 34pt value slot) stays at or above the
-/// classic 158 pt the capsule era guaranteed.
+/// The bar never pays for the value: compact rows are icon 12pt + 6pt
+/// spacing + flexible bar + 6pt spacing + content-sized value (≤ ~30pt for
+/// a semibold "100%"), so the worst-case bar stays above the classic 158pt.
 @Test(arguments: 2...8, 0...4)
 func barNeverShrinksBelowClassic(rows: Int, sections: Int) {
     let m = CompactGeometry.metrics(rows: rows, sections: sections)
-    let barFlex = m.width - 2 * m.hPad - 12 - 9 - 9 - 34
+    let barFlex = m.width - 2 * m.hPad - 12 - 6 - 6 - 30
     #expect(barFlex >= 158, "rows=\(rows) sections=\(sections): bar \(barFlex)pt < classic 158pt")
 }
 
