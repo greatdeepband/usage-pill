@@ -1,5 +1,32 @@
 # Changelog
 
+## v1.4.0 — 2026-08-21
+
+New feature: a **Fable weekly bar**, directly under Week.
+
+Anthropic's usage endpoint now reports a model-scoped weekly window for
+Fable (the Mythos-class Claude 5 tier) in its `limits` array; the pill
+decodes it from the **same response it already fetches** — zero extra
+requests. The bar wears a dusk-lavender accent and a closed-book glyph,
+pinned in the compact pill by default, with a reset countdown in the
+expanded card ("resets Sun 07:00", same formatter as Week).
+
+- **Joins the alarm.** Fable follows the existing tone rules — amber at
+  80%, red at 95% — and when Red Alert at 90% weekly fires, all three
+  Claude bars flare together. A Fable spike alone never trips the alert:
+  the weekly-all budget stays the trigger.
+- **Themeable like its siblings.** Every palette gained a third tint
+  (Dusk lavender, Mist white-35%, Sage dusty blue), the Claude settings
+  page a "Fable bar" color well, and the row its own
+  Pinned / On Hover / Hidden picker. Pre-1.4 stored themes upgrade
+  cleanly — only the missing Fable color falls back, never your custom
+  session/week picks.
+- **Graceful absence.** The row renders only while your account actually
+  reports a Fable weekly limit (same behavior as the Credits row), so
+  accounts without one keep today's exact pill.
+- VoiceOver reads the new row as one sentence, and it counts toward the
+  freshness footer like every other Claude row.
+
 ## v1.3.0 — 2026-07-26
 
 UI/UX overhaul (designed with UI/UX Pro Max, approved via mockup review).

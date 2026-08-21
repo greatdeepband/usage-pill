@@ -1,8 +1,8 @@
 # Usage Pill
 
 A tiny always-on-top macOS widget that shows all your AI usage meters in one
-pill: your Claude plan windows (the **5-hour session** and **weekly** bars)
-plus any number of API credit balances — DeepSeek ships as a preset, and any
+pill: your Claude plan windows (the **5-hour session**, **weekly**, and
+**Fable weekly** bars) plus any number of API credit balances — DeepSeek ships as a preset, and any
 GET-JSON endpoint can be added through a guided custom flow (paste a URL and
 a key, tap the number you recognize). Credit rows render as **drain bars**
 against a per-launch high-water baseline, with per-provider accent colors and
@@ -10,7 +10,7 @@ optional warn thresholds. Hover expands the pill into a card with reset
 countdowns, full balances, and data freshness.
 
 <p align="center">
-  <img src="docs/screenshot-expanded.png" width="300" alt="Usage Pill, hover-expanded: Claude Session and Week bars with reset countdowns, provider credit rows with drain bars, and a freshness footer">
+  <img src="docs/screenshot-expanded.png" width="300" alt="Usage Pill, hover-expanded: Claude Session, Week, and Fable bars with reset countdowns, a DeepSeek credits drain bar, and a freshness footer">
 </p>
 
 - Floats above every window, on every Space, including over full-screen apps.
@@ -19,8 +19,8 @@ countdowns, full balances, and data freshness.
   need both hands back.
 - Drag it anywhere; the position survives restarts and display changes.
 - Claude bars turn muted amber at 80% and soft red at 95%; **Red Alert at 90%
-  weekly** (default on) turns both bars red when the week crosses 90% — and
-  the number itself takes the alarm tone, never hue alone.
+  weekly** (default on) turns every Claude bar red when the week crosses 90% —
+  and the number itself takes the alarm tone, never hue alone.
 - Legible by measurement: every text tier clears WCAG 4.5:1, plus Reduce
   Motion and VoiceOver support.
 - Per-provider visibility: pin rows to the compact pill, show them only when
@@ -32,7 +32,7 @@ countdowns, full balances, and data freshness.
 
 ## Install
 
-Download `Usage Pill.app.zip` from the
+Download `Usage Pill.zip` (or the drag-to-Applications DMG) from the
 [latest GitHub Release](https://github.com/greatdeepband/usage-pill/releases),
 unzip, and drag `Usage Pill.app` to `/Applications`.
 
@@ -70,6 +70,13 @@ exact percentages Claude Code's `/usage` command reports. Access is **strictly
 read-only** — it never writes to the keychain, never refreshes or stores
 tokens elsewhere, and never logs them. API-key billing has no usage windows to
 show, so a Claude Code sign-in is the only supported source.
+
+When your account reports a model-scoped weekly limit for **Fable** (the
+Mythos-class Claude 5 tier), a third bar appears under Week — dusk-lavender,
+with its own reset countdown, palette color, and Pinned/On Hover/Hidden
+picker. It reads from the same usage response as the other two bars, joins
+the 90% Red Alert, and simply doesn't render on accounts without a Fable
+window.
 
 When extra-usage credits are enabled on your account, a **Credits** row
 appears in the expanded view showing your monthly spend (or remaining balance

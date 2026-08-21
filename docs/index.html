@@ -121,6 +121,7 @@
   .bar > i { display: block; height: 100%; border-radius: 3px; }
   .fill-session > i { width: 30%; background: linear-gradient(90deg, #d8b48c, #c9a27e); }
   .fill-week    > i { width: 60%; background: linear-gradient(90deg, #a9bbd8, #8fa6c8); }
+  .fill-fable   > i { width: 45%; background: linear-gradient(90deg, #bcaad8, #a995c9); }
   .fill-credits > i { width: 100%; background: linear-gradient(90deg, #67d98a, #34c759); }
   .pill-divider { height: 1px; background: rgba(255, 255, 255, 0.12); margin: 14px 0; }
   .pill-updated { font-size: 10px; color: #9c9ca4; text-align: right; margin-top: 14px; }
@@ -199,7 +200,7 @@
     </div>
 
     <div class="pill-stage">
-      <div class="pill" role="img" aria-label="Example of the Usage Pill widget showing Claude session and weekly usage and a DeepSeek balance">
+      <div class="pill" role="img" aria-label="Example of the Usage Pill widget showing Claude session, weekly, and Fable weekly usage and a DeepSeek balance">
         <div class="pill-section">CLAUDE</div>
         <div class="meter">
           <div class="meter-head"><span class="name">Session</span><span class="status">resets in 2h 14m</span></div>
@@ -208,6 +209,10 @@
         <div class="meter">
           <div class="meter-head"><span class="name">Week</span><span class="status">resets Sun 07:00</span></div>
           <div class="bar fill-week"><i></i></div>
+        </div>
+        <div class="meter">
+          <div class="meter-head"><span class="name">Fable</span><span class="status">resets Sun 07:00</span></div>
+          <div class="bar fill-fable"><i></i></div>
         </div>
         <div class="pill-divider"></div>
         <div class="pill-section">DEEPSEEK</div>
@@ -229,7 +234,7 @@
       <div class="card">
         <div class="ico"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2 2M12 1h0M9 1h6"/></svg></div>
         <h3>Claude plan windows</h3>
-        <p>Your 5-hour session and weekly limits, live — so you always know how much headroom is left before you hit a wall.</p>
+        <p>Your 5-hour session, weekly, and Fable weekly limits, live — so you always know how much headroom is left before you hit a wall.</p>
       </div>
       <div class="card">
         <div class="ico"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="13" rx="2"/><path d="M2 10h20M16 14h2"/></svg></div>
@@ -256,7 +261,7 @@
     <p class="section-sub">Real screenshots — the pill, and the settings behind it.</p>
     <div class="shots">
       <figure class="shot">
-        <img src="img/pill.png" alt="The Usage Pill widget hover-expanded: Claude Session at 3% and Week at 0% with reset countdowns, on the unified rounded-card silhouette" loading="lazy" />
+        <img src="img/pill.png" alt="The Usage Pill widget hover-expanded: Claude Session, Week, and Fable bars with reset countdowns and a DeepSeek credits drain bar, on the unified rounded-card silhouette" loading="lazy" />
         <figcaption>The pill, hover-expanded — every meter, one always-on-top card.</figcaption>
       </figure>
       <figure class="shot">
