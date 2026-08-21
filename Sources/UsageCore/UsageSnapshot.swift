@@ -34,11 +34,14 @@ public struct SpendInfo: Equatable, Sendable {
 public struct UsageSnapshot: Equatable, Sendable {
     public let session: UsageWindow? // "five_hour"
     public let week: UsageWindow?    // "seven_day"
+    public let fable: UsageWindow?   // "limits" weekly_scoped, model "Fable"
     public let spend: SpendInfo?     // "spend" block
 
-    public init(session: UsageWindow?, week: UsageWindow?, spend: SpendInfo? = nil) {
+    public init(session: UsageWindow?, week: UsageWindow?,
+                fable: UsageWindow? = nil, spend: SpendInfo? = nil) {
         self.session = session
         self.week = week
+        self.fable = fable
         self.spend = spend
     }
 }
@@ -56,8 +59,30 @@ public extension UsageSnapshot {
         return UsageSnapshot(
             session: UsageWindow(json: root["five_hour"]),
             week: UsageWindow(json: root["seven_day"]),
+            fable: fableWindow(fromLimits: root["limits"]),
             spend: SpendInfo(json: root["spend"])
         )
+    }
+
+    /// The Fable weekly window lives in the `limits` array, not a top-level
+    /// bucket: `kind == "weekly_scoped"` with `scope.model.display_name ==
+    /// "Fable"`, utilization under `percent`. Absent/misshapen → nil (the
+    /// row simply doesn't render).
+    internal static func fableWindow(fromLimits json: Any?) -> UsageWindow? {
+        guard let entries = json as? [Any] else { return nil }
+        for case let entry as [String: Any] in entries {
+            guard entry["kind"] as? String == "weekly_scoped",
+                  let scope = entry["scope"] as? [String: Any],
+                  let model = scope["model"] as? [String: Any],
+                  model["display_name"] as? String == "Fable",
+                  let number = entry["percent"] as? NSNumber,
+                  CFGetTypeID(number) != CFBooleanGetTypeID() else { continue }
+            return UsageWindow(
+                utilization: number.doubleValue,
+                resetsAt: UsageWindow.flexibleDate(entry["resets_at"])
+            )
+        }
+        return nil
     }
 }
 

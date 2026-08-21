@@ -25,6 +25,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// deliberately not gated.
     private var anyClaudeRowVisible: Bool {
         themeStore.sessionVisibility != .hidden || themeStore.weekVisibility != .hidden
+            || themeStore.fableVisibility != .hidden
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -88,6 +89,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 let hidden = ProviderSpec.Visibility.hidden.rawValue
                 UserDefaults.standard.set(hidden, forKey: ThemeSettings.sessionVisibilityKey)
                 UserDefaults.standard.set(hidden, forKey: ThemeSettings.weekVisibilityKey)
+                UserDefaults.standard.set(hidden, forKey: ThemeSettings.fableVisibilityKey)
             }
         }
         themeStore = ThemeStore()
@@ -132,11 +134,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // stale (or no) data until the next timer tick.
         claudeWasVisible = anyClaudeRowVisible
         themeStore.$sessionVisibility
-            .combineLatest(themeStore.$weekVisibility)
+            .combineLatest(themeStore.$weekVisibility, themeStore.$fableVisibility)
             .receive(on: RunLoop.main)
-            .sink { [weak self] session, week in
+            .sink { [weak self] session, week, fable in
                 guard let self else { return }
-                let visible = session != .hidden || week != .hidden
+                let visible = session != .hidden || week != .hidden || fable != .hidden
                 if visible && !self.claudeWasVisible {
                     Task { @MainActor in await self.model.refresh() }
                 }
@@ -221,7 +223,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Sections (Task 18a): the Claude section header counts when ≥1 Claude
     /// row is visible in that mode; each visible provider is its own section.
     private func syncPanelLayout() {
-        let claudeVis = [themeStore.sessionVisibility, themeStore.weekVisibility]
+        // The Fable row exists only while the account reports a Fable window
+        // (same graceful absence as the Credits row) — its visibility counts
+        // only then. The model.$snapshot sink re-syncs when the window
+        // appears/disappears.
+        var claudeVis = [themeStore.sessionVisibility, themeStore.weekVisibility]
+        if model.snapshot?.fable != nil {
+            claudeVis.append(themeStore.fableVisibility)
+        }
         let rows = providersModel.rows
         let pinnedClaude = claudeVis.filter { $0 == .pinned }.count
         let pinnedProviders = rows.filter { $0.spec.visibility == .pinned }.count

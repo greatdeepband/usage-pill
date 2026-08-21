@@ -88,12 +88,14 @@ struct ProvidersTabView: View {
                     keyStore: keyStore,
                     providersModel: providersModel,
                     claudeRemoved: { themeStore.sessionVisibility == .hidden
-                        && themeStore.weekVisibility == .hidden },
+                        && themeStore.weekVisibility == .hidden
+                        && themeStore.fableVisibility == .hidden },
                     claudeCheck: claudeCheck,
                     onClaudeConnected: {
-                        // Path-A "add": flip both built-in rows back on.
+                        // Path-A "add": flip the built-in rows back on.
                         themeStore.setSessionVisibility(.pinned)
                         themeStore.setWeekVisibility(.pinned)
+                        themeStore.setFableVisibility(.pinned)
                     },
                     onClose: { navigate(to: .list) }
                 )
@@ -140,10 +142,11 @@ struct ProvidersTabView: View {
 
     // MARK: list page
 
-    /// Path-A "removed" semantics: both Claude visibilities hidden ⇒ the row
+    /// Path-A "removed" semantics: all Claude visibilities hidden ⇒ the row
     /// disappears from the list (and the catalog offers Claude again, Task 4).
     private var claudeRemoved: Bool {
         themeStore.sessionVisibility == .hidden && themeStore.weekVisibility == .hidden
+            && themeStore.fableVisibility == .hidden
     }
 
     private var listPage: some View {
@@ -293,14 +296,15 @@ struct ProvidersTabView: View {
     private var claudeSummary: String {
         let s = themeStore.sessionVisibility
         let w = themeStore.weekVisibility
-        if s == w {
+        let f = themeStore.fableVisibility
+        if s == w && w == f {
             switch s {
-            case .pinned: return "Session & Week pinned"
-            case .expandedOnly: return "Session & Week on hover"
+            case .pinned: return "All rows pinned"
+            case .expandedOnly: return "All rows on hover"
             case .hidden: return "Hidden"
             }
         }
-        return "Session \(shortLabel(s)) · Week \(shortLabel(w))"
+        return "Session \(shortLabel(s)) · Week \(shortLabel(w)) · Fable \(shortLabel(f))"
     }
 
     private func shortLabel(_ v: ProviderSpec.Visibility) -> String {
@@ -406,6 +410,11 @@ struct ClaudeSettingsPage: View {
                     ColorPicker("", selection: binding(\.weekHex, set: themeStore.setWeekHex))
                         .labelsHidden()
                 }
+                CardDivider()
+                labeledRow("Fable bar") {
+                    ColorPicker("", selection: binding(\.fableHex, set: themeStore.setFableHex))
+                        .labelsHidden()
+                }
             }
             SettingsCard {
                 Toggle("Red Alert at 90% Weekly", isOn: $themeStore.redAlert90)
@@ -434,8 +443,15 @@ struct ClaudeSettingsPage: View {
                         set: { themeStore.setWeekVisibility($0) }
                     ))
                 }
+                CardDivider()
+                labeledRow("Fable") {
+                    CapsulePicker(options: visibilityOptions, selection: Binding(
+                        get: { themeStore.fableVisibility },
+                        set: { themeStore.setFableVisibility($0) }
+                    ))
+                }
             }
-            CardFooter(text: "\u{201C}On Hover\u{201D} rows appear only in the hover-expanded card.")
+            CardFooter(text: "\u{201C}On Hover\u{201D} rows appear only in the hover-expanded card. The Fable row shows only while your account reports a Fable weekly limit.")
             SettingsCard {
                 Button {
                     confirmRemove = true
@@ -463,12 +479,13 @@ struct ClaudeSettingsPage: View {
             "Hide Claude from the pill?",
             isPresented: $confirmRemove
         ) {
-            // Path-A facade: "remove" just hides both built-in rows — nothing
+            // Path-A facade: "remove" just hides the built-in rows — nothing
             // is deleted, no keychain item is touched, and re-adding from the
             // catalog flips them back.
             Button("Remove Provider", role: .destructive) {
                 themeStore.setSessionVisibility(.hidden)
                 themeStore.setWeekVisibility(.hidden)
+                themeStore.setFableVisibility(.hidden)
                 onClose() // straight back to the list; no snapshot restore
             }
         } message: {

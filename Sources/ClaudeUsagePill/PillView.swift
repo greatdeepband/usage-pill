@@ -82,12 +82,17 @@ struct PillView: View {
         providers.rows.filter { isVisible($0.spec.visibility) }
     }
 
+    /// The Fable row exists only while the snapshot carries a Fable window
+    /// (graceful absence, like the Credits row) — visibility applies on top.
+    private var fableAvailable: Bool { model.snapshot?.fable != nil }
+
     /// Compact paddings: CONSTANT 18pt horizontal (unified 18pt corner
     /// radius needs no capsule clearance), height-aware vertical. Counts
     /// here MUST mirror AppDelegate.syncPanelLayout's math.
     private var compactMetrics: CompactGeometry.Metrics {
-        let claudeRows = [theme.sessionVisibility, theme.weekVisibility]
-            .filter { $0 == .pinned }.count
+        var claudeVis = [theme.sessionVisibility, theme.weekVisibility]
+        if fableAvailable { claudeVis.append(theme.fableVisibility) }
+        let claudeRows = claudeVis.filter { $0 == .pinned }.count
         let providerRows = providers.rows.filter { $0.spec.visibility == .pinned }.count
         return CompactGeometry.metrics(
             rows: claudeRows + providerRows,
@@ -100,6 +105,7 @@ struct PillView: View {
         let shape: AnyShape = AnyShape(RoundedRectangle(cornerRadius: CompactGeometry.cornerRadius))
         let showSession = isVisible(theme.sessionVisibility)
         let showWeek = isVisible(theme.weekVisibility)
+        let showFable = fableAvailable && isVisible(theme.fableVisibility)
         let providerRows = visibleProviderRows
         VStack(alignment: .leading, spacing: expanded ? 10 : 6) {
             // True empty: no rows at all in either mode → prompt user to open
@@ -108,8 +114,10 @@ struct PillView: View {
             // (hovering reveals the rows); avoids a misleading prompt when the pill
             // is intentionally configured with expanded-only rows.
             let noClaudeEver = theme.sessionVisibility == .hidden && theme.weekVisibility == .hidden
+                && theme.fableVisibility == .hidden
             let allRowsEmpty = providers.rows.isEmpty && noClaudeEver
-            let compactNothingPinned = !expanded && !showSession && !showWeek && providerRows.isEmpty
+            let compactNothingPinned = !expanded && !showSession && !showWeek && !showFable
+                && providerRows.isEmpty
             if allRowsEmpty {
                 Text("open Settings to connect a provider")
                     .font(.system(size: 9.5))
@@ -125,12 +133,13 @@ struct PillView: View {
                 // Claude section: header + (identity strip) + visible Claude
                 // rows. Header and identity render only when ≥1 Claude row is
                 // visible in the current mode (hidden-Claude carve-out).
-                if showSession || showWeek {
-                    // Red alert at 90% weekly: tones for BOTH Claude bars come
-                    // from one place, so the session bar flares with the week.
+                if showSession || showWeek || showFable {
+                    // Red alert at 90% weekly: tones for ALL Claude bars come
+                    // from one place, so session and Fable flare with the week.
                     let tones = BarTone.claudeTones(
                         session: model.snapshot?.session?.utilization,
                         week: model.snapshot?.week?.utilization,
+                        fable: model.snapshot?.fable?.utilization,
                         redAlert90: theme.redAlert90
                     )
                     sectionHeader("Claude")
@@ -151,6 +160,14 @@ struct PillView: View {
                             tone: tones.week, symbol: "calendar",
                             label: "Week",
                             resetText: CountdownFormatter.weekReset(model.snapshot?.week?.resetsAt, now: now)
+                        )
+                    }
+                    if showFable {
+                        barRow(
+                            window: model.snapshot?.fable, base: Color(themeHex: theme.theme.fableHex),
+                            tone: tones.fable, symbol: "book.closed",
+                            label: "Fable",
+                            resetText: CountdownFormatter.weekReset(model.snapshot?.fable?.resetsAt, now: now)
                         )
                     }
                     if let spend = model.snapshot?.spend, spend.enabled {
@@ -353,8 +370,9 @@ struct PillView: View {
     }
 
     private var footer: some View {
-        // Claude-specific hints make no sense when both Claude rows are hidden.
+        // Claude-specific hints make no sense when all Claude rows are hidden.
         let claudeVisible = isVisible(theme.sessionVisibility) || isVisible(theme.weekVisibility)
+            || (fableAvailable && isVisible(theme.fableVisibility))
         return HStack {
             if claudeVisible, case .stale(let reason) = model.status {
                 if reason == .noCredentials {
@@ -382,7 +400,8 @@ struct PillView: View {
     /// forever even when Claude data is fresh.
     private var oldestSuccessSeconds: TimeInterval? {
         var dates: [Date] = []
-        if isVisible(theme.sessionVisibility) || isVisible(theme.weekVisibility) {
+        if isVisible(theme.sessionVisibility) || isVisible(theme.weekVisibility)
+            || (fableAvailable && isVisible(theme.fableVisibility)) {
             guard let d = model.lastSuccess else { return nil }
             dates.append(d)
         }

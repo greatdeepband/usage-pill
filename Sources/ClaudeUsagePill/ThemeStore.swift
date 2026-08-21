@@ -10,6 +10,7 @@ final class ThemeStore: ObservableObject {
     @Published var redAlert90: Bool { didSet { persist() } }
     @Published private(set) var sessionVisibility: ProviderSpec.Visibility
     @Published private(set) var weekVisibility: ProviderSpec.Visibility
+    @Published private(set) var fableVisibility: ProviderSpec.Visibility
 
     private let settings: ThemeSettings
 
@@ -20,6 +21,7 @@ final class ThemeStore: ObservableObject {
         palette = loaded.palette
         sessionVisibility = loaded.sessionVisibility
         weekVisibility = loaded.weekVisibility
+        fableVisibility = loaded.fableVisibility
         // didSet does not fire during init — no spurious persist()
         showIdentity = loaded.showIdentity
         redAlert90 = loaded.redAlert90
@@ -35,13 +37,14 @@ final class ThemeStore: ObservableObject {
         let showIdentity: Bool
         let sessionVisibility: ProviderSpec.Visibility
         let weekVisibility: ProviderSpec.Visibility
+        let fableVisibility: ProviderSpec.Visibility
         let redAlert90: Bool
     }
 
     func snapshot() -> Snapshot {
         Snapshot(theme: theme, palette: palette, showIdentity: showIdentity,
                  sessionVisibility: sessionVisibility, weekVisibility: weekVisibility,
-                 redAlert90: redAlert90)
+                 fableVisibility: fableVisibility, redAlert90: redAlert90)
     }
 
     func restore(_ s: Snapshot) {
@@ -49,6 +52,7 @@ final class ThemeStore: ObservableObject {
         palette = s.palette
         sessionVisibility = s.sessionVisibility
         weekVisibility = s.weekVisibility
+        fableVisibility = s.fableVisibility
         // These two persist via didSet; set them last so the persisted state
         // already contains the restored theme/palette/visibilities.
         showIdentity = s.showIdentity
@@ -63,6 +67,11 @@ final class ThemeStore: ObservableObject {
 
     func setWeekVisibility(_ v: ProviderSpec.Visibility) {
         weekVisibility = v
+        persist()
+    }
+
+    func setFableVisibility(_ v: ProviderSpec.Visibility) {
+        fableVisibility = v
         persist()
     }
 
@@ -87,10 +96,17 @@ final class ThemeStore: ObservableObject {
         persist()
     }
 
+    func setFableHex(_ hex: String) {
+        guard ThemeColor.parse(hex) != nil else { return }
+        theme.fableHex = hex
+        palette = .custom
+        persist()
+    }
+
     private func persist() {
         settings.save(theme: theme, palette: palette, showIdentity: showIdentity,
                       sessionVisibility: sessionVisibility, weekVisibility: weekVisibility,
-                      redAlert90: redAlert90)
+                      fableVisibility: fableVisibility, redAlert90: redAlert90)
     }
 }
 

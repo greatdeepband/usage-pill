@@ -101,6 +101,53 @@ import Testing
     #expect(snap.week?.resetsAt == nil)   // boolean resets_at -> nil date
 }
 
+// MARK: - Fable window (limits array)
+
+@Test func decodesFableFromLiveLimitsFixture() throws {
+    let snap = try UsageSnapshot.decode(from: Data(Fixtures.liveUsageResponseWithLimits.utf8))
+    let fable = try #require(snap.fable)
+    // Pin exact values from the 2026-08-21 live fixture.
+    #expect(fable.utilization == 75.0)
+    let fracFmt = ISO8601DateFormatter()
+    fracFmt.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+    #expect(fable.resetsAt == fracFmt.date(from: "2026-08-23T04:59:59.960Z"))
+    // The classic buckets still decode from this shape.
+    #expect(snap.session?.utilization == 9.0)
+    #expect(snap.week?.utilization == 75.0)
+    #expect(snap.spend == nil) // enabled: false
+}
+
+@Test func fableNilWhenLimitsAbsent() throws {
+    // The pre-limits fixture (2026-06-10) has no limits array at all.
+    let snap = try UsageSnapshot.decode(from: Data(Fixtures.liveUsageResponse.utf8))
+    #expect(snap.fable == nil)
+}
+
+@Test func fableIgnoresOtherScopedModelsAndMisshapenEntries() throws {
+    let json = #"""
+    {"seven_day":{"utilization":10},"limits":[
+        {"kind":"weekly_all","percent":10},
+        {"kind":"weekly_scoped","percent":40,"scope":{"model":{"display_name":"Opus"}}},
+        {"kind":"weekly_scoped","percent":50,"scope":{"surface":"cowork"}},
+        {"kind":"weekly_scoped","percent":60},
+        "not-a-dict",
+        {"kind":"weekly_scoped","percent":true,"scope":{"model":{"display_name":"Fable"}}}
+    ]}
+    """#
+    let snap = try UsageSnapshot.decode(from: Data(json.utf8))
+    #expect(snap.fable == nil) // wrong model / no scope / boolean percent — all skipped
+}
+
+@Test func fableParsesIntPercentAndClampsAndSurvivesNilResetsAt() throws {
+    let json = #"""
+    {"limits":[{"kind":"weekly_scoped","percent":140,"resets_at":null,
+                "scope":{"model":{"display_name":"Fable"}}}]}
+    """#
+    let snap = try UsageSnapshot.decode(from: Data(json.utf8))
+    #expect(snap.fable?.utilization == 100) // clamped
+    #expect(snap.fable?.resetsAt == nil)
+}
+
 @Test func decodesSpendFromLiveFixture() throws {
     let snap = try UsageSnapshot.decode(from: Data(Fixtures.liveUsageResponse.utf8))
     let spend = try #require(snap.spend)

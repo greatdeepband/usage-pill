@@ -3,9 +3,14 @@ import Foundation
 public struct Theme: Equatable, Sendable {
     public var sessionHex: String
     public var weekHex: String
-    public init(sessionHex: String, weekHex: String) {
+    public var fableHex: String
+    /// The default keeps pre-Fable call sites (and stored themes) valid:
+    /// absent → Dusk's lavender.
+    public init(sessionHex: String, weekHex: String,
+                fableHex: String = "#A995C9FF") {
         self.sessionHex = sessionHex
         self.weekHex = weekHex
+        self.fableHex = fableHex
     }
 }
 
@@ -15,9 +20,12 @@ public enum Palette: String, CaseIterable, Sendable {
     /// nil for .custom — custom has no fixed colors.
     public var preset: Theme? {
         switch self {
-        case .dusk: return Theme(sessionHex: "#C9A283FF", weekHex: "#8FA3C2FF")
-        case .mist: return Theme(sessionHex: "#FFFFFFBF", weekHex: "#FFFFFF73")
-        case .sage: return Theme(sessionHex: "#9DB39AFF", weekHex: "#A294C4FF")
+        case .dusk: return Theme(sessionHex: "#C9A283FF", weekHex: "#8FA3C2FF",
+                                 fableHex: "#A995C9FF")
+        case .mist: return Theme(sessionHex: "#FFFFFFBF", weekHex: "#FFFFFF73",
+                                 fableHex: "#FFFFFF59")
+        case .sage: return Theme(sessionHex: "#9DB39AFF", weekHex: "#A294C4FF",
+                                 fableHex: "#8FA3C2FF")
         case .custom: return nil
         }
     }
@@ -27,10 +35,12 @@ public enum Palette: String, CaseIterable, Sendable {
 public struct ThemeSettings {
     public static let sessionKey = "theme.session"
     public static let weekKey = "theme.week"
+    public static let fableKey = "theme.fable"
     public static let paletteKey = "theme.palette"
     public static let identityKey = "identity.show"
     public static let sessionVisibilityKey = "claude.sessionVisibility"
     public static let weekVisibilityKey = "claude.weekVisibility"
+    public static let fableVisibilityKey = "claude.fableVisibility"
     public static let redAlertKey = "claude.redAlert90"
 
     /// First-run import bookkeeping (plan Task 18): set in OUR domain once the
@@ -66,6 +76,7 @@ public struct ThemeSettings {
     public func load() -> (theme: Theme, palette: Palette, showIdentity: Bool,
                            sessionVisibility: ProviderSpec.Visibility,
                            weekVisibility: ProviderSpec.Visibility,
+                           fableVisibility: ProviderSpec.Visibility,
                            redAlert90: Bool) {
         let showIdentity = defaults.bool(forKey: Self.identityKey) // default false
         // Red alert defaults ON; anything that isn't a Bool (missing, garbage
@@ -77,28 +88,41 @@ public struct ThemeSettings {
             .flatMap(ProviderSpec.Visibility.init(rawValue:)) ?? .pinned
         let weekVisibility = defaults.string(forKey: Self.weekVisibilityKey)
             .flatMap(ProviderSpec.Visibility.init(rawValue:)) ?? .pinned
+        let fableVisibility = defaults.string(forKey: Self.fableVisibilityKey)
+            .flatMap(ProviderSpec.Visibility.init(rawValue:)) ?? .pinned
         let palette = defaults.string(forKey: Self.paletteKey).flatMap(Palette.init(rawValue:))
         let session = defaults.string(forKey: Self.sessionKey)
         let week = defaults.string(forKey: Self.weekKey)
         if let palette, let session, let week,
            ThemeColor.parse(session) != nil, ThemeColor.parse(week) != nil {
-            return (Theme(sessionHex: session, weekHex: week), palette, showIdentity,
-                    sessionVisibility, weekVisibility, redAlert90)
+            // Fable joined in v1.4: a pre-Fable store has no theme.fable, and
+            // it must NOT trigger the Dusk fallback — the missing/corrupt
+            // color falls back alone, to the stored palette's preset (custom
+            // → the Dusk lavender, matching Theme's init default).
+            let fable = defaults.string(forKey: Self.fableKey)
+                .flatMap { ThemeColor.parse($0) != nil ? $0 : nil }
+                ?? (palette.preset ?? Palette.dusk.preset!).fableHex
+            return (Theme(sessionHex: session, weekHex: week, fableHex: fable),
+                    palette, showIdentity,
+                    sessionVisibility, weekVisibility, fableVisibility, redAlert90)
         }
         return (Palette.dusk.preset!, .dusk, showIdentity, sessionVisibility, weekVisibility,
-                redAlert90)
+                fableVisibility, redAlert90)
     }
 
     public func save(theme: Theme, palette: Palette, showIdentity: Bool,
                      sessionVisibility: ProviderSpec.Visibility,
                      weekVisibility: ProviderSpec.Visibility,
+                     fableVisibility: ProviderSpec.Visibility,
                      redAlert90: Bool) {
         defaults.set(theme.sessionHex, forKey: Self.sessionKey)
         defaults.set(theme.weekHex, forKey: Self.weekKey)
+        defaults.set(theme.fableHex, forKey: Self.fableKey)
         defaults.set(palette.rawValue, forKey: Self.paletteKey)
         defaults.set(showIdentity, forKey: Self.identityKey)
         defaults.set(sessionVisibility.rawValue, forKey: Self.sessionVisibilityKey)
         defaults.set(weekVisibility.rawValue, forKey: Self.weekVisibilityKey)
+        defaults.set(fableVisibility.rawValue, forKey: Self.fableVisibilityKey)
         defaults.set(redAlert90, forKey: Self.redAlertKey)
     }
 }

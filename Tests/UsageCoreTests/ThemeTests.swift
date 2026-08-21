@@ -4,10 +4,18 @@ import Testing
 
 
 @Test func presetsHaveExpectedColors() {
-    #expect(Palette.dusk.preset == Theme(sessionHex: "#C9A283FF", weekHex: "#8FA3C2FF"))
-    #expect(Palette.mist.preset == Theme(sessionHex: "#FFFFFFBF", weekHex: "#FFFFFF73"))
-    #expect(Palette.sage.preset == Theme(sessionHex: "#9DB39AFF", weekHex: "#A294C4FF"))
+    #expect(Palette.dusk.preset == Theme(
+        sessionHex: "#C9A283FF", weekHex: "#8FA3C2FF", fableHex: "#A995C9FF"))
+    #expect(Palette.mist.preset == Theme(
+        sessionHex: "#FFFFFFBF", weekHex: "#FFFFFF73", fableHex: "#FFFFFF59"))
+    #expect(Palette.sage.preset == Theme(
+        sessionHex: "#9DB39AFF", weekHex: "#A294C4FF", fableHex: "#8FA3C2FF"))
     #expect(Palette.custom.preset == nil)
+}
+
+@Test func themeInitDefaultsFableToDuskLavender() {
+    // Pre-Fable call sites (and stored themes) get Dusk's lavender.
+    #expect(Theme(sessionHex: "#11223344", weekHex: "#55667788").fableHex == "#A995C9FF")
 }
 
 @Test func loadDefaultsToDuskWithIdentityOff() {
@@ -25,7 +33,8 @@ import Testing
         let s = ThemeSettings(defaults: d)
         let custom = Theme(sessionHex: "#11223344", weekHex: "#55667788")
         s.save(theme: custom, palette: .custom, showIdentity: true,
-               sessionVisibility: .pinned, weekVisibility: .pinned, redAlert90: true)
+               sessionVisibility: .pinned, weekVisibility: .pinned,
+               fableVisibility: .pinned, redAlert90: true)
         let loaded = ThemeSettings(defaults: d).load()
         #expect(loaded.theme == custom)
         #expect(loaded.palette == .custom)
@@ -43,7 +52,8 @@ import Testing
     TestDefaults.withFresh(prefix: "theme-tests-") { d in
         let s = ThemeSettings(defaults: d)
         s.save(theme: Palette.dusk.preset!, palette: .dusk, showIdentity: false,
-               sessionVisibility: .pinned, weekVisibility: .pinned, redAlert90: false)
+               sessionVisibility: .pinned, weekVisibility: .pinned,
+               fableVisibility: .pinned, redAlert90: false)
         #expect(ThemeSettings(defaults: d).load().redAlert90 == false)
     }
 }
@@ -67,10 +77,12 @@ import Testing
     TestDefaults.withFresh(prefix: "theme-tests-") { d in
         let s = ThemeSettings(defaults: d)
         s.save(theme: Palette.dusk.preset!, palette: .dusk, showIdentity: false,
-               sessionVisibility: .expandedOnly, weekVisibility: .hidden, redAlert90: true)
+               sessionVisibility: .expandedOnly, weekVisibility: .hidden,
+               fableVisibility: .expandedOnly, redAlert90: true)
         let loaded = ThemeSettings(defaults: d).load()
         #expect(loaded.sessionVisibility == .expandedOnly)
         #expect(loaded.weekVisibility == .hidden)
+        #expect(loaded.fableVisibility == .expandedOnly)
     }
 }
 
@@ -78,9 +90,56 @@ import Testing
     TestDefaults.withFresh(prefix: "theme-tests-") { d in
         d.set("sometimes", forKey: "claude.sessionVisibility")
         d.set(42, forKey: "claude.weekVisibility")
+        d.set("often", forKey: "claude.fableVisibility")
         let loaded = ThemeSettings(defaults: d).load()
         #expect(loaded.sessionVisibility == .pinned)
         #expect(loaded.weekVisibility == .pinned)
+        #expect(loaded.fableVisibility == .pinned)
+    }
+}
+
+@Test func fableVisibilityDefaultsToPinned() {
+    TestDefaults.withFresh(prefix: "theme-tests-") { d in
+        #expect(ThemeSettings(defaults: d).load().fableVisibility == .pinned)
+    }
+}
+
+// MARK: - Fable color fallback (stores written before v1.4 have no theme.fable)
+
+@Test func missingFableHexFallsBackToStoredPalettePreset() {
+    TestDefaults.withFresh(prefix: "theme-tests-") { d in
+        let sage = Palette.sage.preset!
+        d.set(sage.sessionHex, forKey: ThemeSettings.sessionKey)
+        d.set(sage.weekHex, forKey: ThemeSettings.weekKey)
+        d.set("sage", forKey: ThemeSettings.paletteKey)
+        let loaded = ThemeSettings(defaults: d).load()
+        // The pre-Fable store must NOT fall back to Dusk wholesale — only the
+        // missing fable color falls back, to the stored palette's preset.
+        #expect(loaded.palette == .sage)
+        #expect(loaded.theme.fableHex == sage.fableHex)
+    }
+}
+
+@Test func missingFableHexOnCustomPaletteFallsBackToDuskLavender() {
+    TestDefaults.withFresh(prefix: "theme-tests-") { d in
+        d.set("#11223344", forKey: ThemeSettings.sessionKey)
+        d.set("#55667788", forKey: ThemeSettings.weekKey)
+        d.set("custom", forKey: ThemeSettings.paletteKey)
+        let loaded = ThemeSettings(defaults: d).load()
+        #expect(loaded.palette == .custom)
+        #expect(loaded.theme.fableHex == Palette.dusk.preset!.fableHex)
+    }
+}
+
+@Test func corruptFableHexFallsBackAloneNotToDusk() {
+    TestDefaults.withFresh(prefix: "theme-tests-") { d in
+        d.set("#11223344", forKey: ThemeSettings.sessionKey)
+        d.set("#55667788", forKey: ThemeSettings.weekKey)
+        d.set("not-a-color", forKey: ThemeSettings.fableKey)
+        d.set("custom", forKey: ThemeSettings.paletteKey)
+        let loaded = ThemeSettings(defaults: d).load()
+        #expect(loaded.theme.sessionHex == "#11223344") // session/week untouched
+        #expect(loaded.theme.fableHex == Palette.dusk.preset!.fableHex)
     }
 }
 
@@ -131,7 +190,8 @@ import Testing
             // User re-themes after the import; legacy changes too.
             ThemeSettings(defaults: ours).save(
                 theme: Palette.sage.preset!, palette: .sage, showIdentity: false,
-                sessionVisibility: .pinned, weekVisibility: .pinned, redAlert90: true)
+                sessionVisibility: .pinned, weekVisibility: .pinned,
+                fableVisibility: .pinned, redAlert90: true)
             legacy.set("#AABBCCDD", forKey: ThemeSettings.sessionKey)
             ThemeSettings.importLegacyIfNeeded(from: legacy, into: ours)
             let loaded = ThemeSettings(defaults: ours).load()
@@ -168,7 +228,8 @@ import Testing
             ours.set(true, forKey: ThemeSettings.didImportV1Key)
             ThemeSettings(defaults: ours).save(
                 theme: Palette.mist.preset!, palette: .mist, showIdentity: false,
-                sessionVisibility: .pinned, weekVisibility: .pinned, redAlert90: true)
+                sessionVisibility: .pinned, weekVisibility: .pinned,
+                fableVisibility: .pinned, redAlert90: true)
             legacy.set("#11223344", forKey: ThemeSettings.sessionKey)
             legacy.set("#55667788", forKey: ThemeSettings.weekKey)
             legacy.set("custom", forKey: ThemeSettings.paletteKey)
