@@ -10,7 +10,7 @@ optional warn thresholds. Hover expands the pill into a card with reset
 countdowns, full balances, and data freshness.
 
 <p align="center">
-  <img src="docs/screenshot-expanded.png" width="300" alt="Usage Pill, hover-expanded: Claude Session, Week, and Fable bars with reset countdowns, a DeepSeek credits drain bar, and a freshness footer">
+  <img src="docs/screenshot-expanded.png" width="300" alt="Usage Pill, hover-expanded: account and plan strip, Claude Session, Week, and Fable bars with reset countdowns, a DeepSeek credits drain bar, and a freshness footer">
 </p>
 
 - Floats above every window, on every Space, including over full-screen apps.
