@@ -1,5 +1,18 @@
 # Changelog
 
+## v1.4.1 — 2026-10-09
+
+The pill now **tells you when Claude Code's login has lapsed** instead of
+silently dimming. The Claude bars read the token Claude Code keeps in your
+keychain; if you mostly run Claude Code inside the Claude desktop app, that
+CLI token is never refreshed (the desktop app signs in separately), so after
+about 8 hours without a `claude` CLI run the usage endpoint answers 401 and
+the bars went blank with no explanation. The expanded card's footer now
+reads **"signed out: claude auth login"** in that state. Run it once and
+the bars come back on the next poll (or right away with Refresh Now), no
+restart needed. The pill itself
+stays strictly read-only: it still never refreshes or writes the token.
+
 ## v1.4.0 — 2026-08-21
 
 New feature: a **Fable weekly bar**, directly under Week.

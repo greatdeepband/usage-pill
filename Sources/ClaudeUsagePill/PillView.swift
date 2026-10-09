@@ -378,6 +378,13 @@ struct PillView: View {
                 if reason == .noCredentials {
                     Text("open Claude Code to sign in")
                         .font(.system(size: 9.5)).foregroundStyle(Dusk.amber.opacity(0.9))
+                } else if reason == .unauthorized {
+                    // The CLI login lapses when Claude Code only runs inside the
+                    // desktop app (it signs in separately and never refreshes the
+                    // CLI token). Read-only rule: the fix is the user's re-login.
+                    Text("signed out: claude auth login")
+                        .font(.system(size: 9.5)).foregroundStyle(Dusk.amber.opacity(0.9))
+                        .lineLimit(1)
                 } else if reason == .rateLimited {
                     Text("rate limited — retrying later")
                         .font(.system(size: 9.5)).foregroundStyle(Dusk.amber.opacity(0.9))
