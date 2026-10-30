@@ -1,8 +1,8 @@
 # Usage Pill
 
 A tiny always-on-top macOS widget that shows all your AI usage meters in one
-pill: your Claude plan windows (the **5-hour session**, **weekly**, and
-**Fable weekly** bars) plus any number of API credit balances — DeepSeek ships as a preset, and any
+pill: your Claude plan windows (the **5-hour session**, while your plan has
+one, plus **weekly** and **Fable weekly** bars) plus any number of API credit balances — DeepSeek ships as a preset, and any
 GET-JSON endpoint can be added through a guided custom flow (paste a URL and
 a key, tap the number you recognize). Credit rows render as **drain bars**
 against a per-launch high-water baseline, with per-provider accent colors and
@@ -63,7 +63,7 @@ Without the cert step, builds are ad-hoc signed and each rebuild re-asks.
 
 ### Claude (plan windows + extra-usage credits)
 
-Requires a Claude **Pro/Max subscription** with
+Requires a Claude **Pro, Max, or Ultra subscription** with
 [Claude Code](https://claude.com/claude-code) logged in on the same Mac. The
 widget reads the OAuth token Claude Code stores in your keychain and shows the
 exact percentages Claude Code's `/usage` command reports. Access is **strictly
@@ -71,10 +71,13 @@ read-only** — it never writes to the keychain, never refreshes or stores
 tokens elsewhere, and never logs them. API-key billing has no usage windows to
 show, so a Claude Code sign-in is the only supported source.
 
+The **Session** bar shows while your plan has a 5-hour limit. Verified Ultra
+accounts don't, so the row goes away by itself once the limit is lifted.
+
 When your account reports a model-scoped weekly limit for **Fable** (the
-Mythos-class Claude 5 tier), a third bar appears under Week — dusk-lavender,
+Mythos-class Claude 5 tier), a bar appears under Week — dusk-lavender,
 with its own reset countdown, palette color, and Pinned/On Hover/Hidden
-picker. It reads from the same usage response as the other two bars, joins
+picker. It reads from the same usage response as the other bars, joins
 the 90% Red Alert, and simply doesn't render on accounts without a Fable
 window.
 

@@ -86,11 +86,16 @@ struct PillView: View {
     /// (graceful absence, like the Credits row) — visibility applies on top.
     private var fableAvailable: Bool { model.snapshot?.fable != nil }
 
+    /// The Session row exists only while the account has a 5-hour limit
+    /// (verified Ultra accounts don't) — visibility applies on top.
+    private var sessionAvailable: Bool { model.hasSessionWindow }
+
     /// Compact paddings: CONSTANT 18pt horizontal (unified 18pt corner
     /// radius needs no capsule clearance), height-aware vertical. Counts
     /// here MUST mirror AppDelegate.syncPanelLayout's math.
     private var compactMetrics: CompactGeometry.Metrics {
-        var claudeVis = [theme.sessionVisibility, theme.weekVisibility]
+        var claudeVis = [theme.weekVisibility]
+        if sessionAvailable { claudeVis.append(theme.sessionVisibility) }
         if fableAvailable { claudeVis.append(theme.fableVisibility) }
         let claudeRows = claudeVis.filter { $0 == .pinned }.count
         let providerRows = providers.rows.filter { $0.spec.visibility == .pinned }.count
@@ -103,7 +108,7 @@ struct PillView: View {
     @ViewBuilder private var content: some View {
         // One silhouette in both states: RoundedRectangle 18pt, always.
         let shape: AnyShape = AnyShape(RoundedRectangle(cornerRadius: CompactGeometry.cornerRadius))
-        let showSession = isVisible(theme.sessionVisibility)
+        let showSession = sessionAvailable && isVisible(theme.sessionVisibility)
         let showWeek = isVisible(theme.weekVisibility)
         let showFable = fableAvailable && isVisible(theme.fableVisibility)
         let providerRows = visibleProviderRows
@@ -113,13 +118,17 @@ struct PillView: View {
             // Compact with no pinned rows but expanded has content → quiet ellipsis
             // (hovering reveals the rows); avoids a misleading prompt when the pill
             // is intentionally configured with expanded-only rows.
-            let noClaudeEver = theme.sessionVisibility == .hidden && theme.weekVisibility == .hidden
+            let noClaudeEver = (!sessionAvailable || theme.sessionVisibility == .hidden)
+                && theme.weekVisibility == .hidden
                 && theme.fableVisibility == .hidden
             let allRowsEmpty = providers.rows.isEmpty && noClaudeEver
             let compactNothingPinned = !expanded && !showSession && !showWeek && !showFable
                 && providerRows.isEmpty
             if allRowsEmpty {
-                Text("open Settings to connect a provider")
+                // Session was the only row chosen and this plan has no 5-hour limit.
+                let sessionGone = !sessionAvailable && theme.sessionVisibility != .hidden
+                Text(sessionGone ? "no 5-hour limit: choose rows in Settings"
+                                 : "open Settings to connect a provider")
                     .font(.system(size: 9.5))
                     .foregroundStyle(.white.opacity(0.55))
                     .frame(maxWidth: .infinity, alignment: .center)
@@ -220,6 +229,7 @@ struct PillView: View {
                 if let badge = identity.planBadge {
                     Text(badge)
                         .font(.system(size: 9.5, weight: .semibold))
+                        .lineLimit(1)
                         .foregroundStyle(Color(themeHex: theme.theme.sessionHex))
                 }
             }
@@ -371,7 +381,8 @@ struct PillView: View {
 
     private var footer: some View {
         // Claude-specific hints make no sense when all Claude rows are hidden.
-        let claudeVisible = isVisible(theme.sessionVisibility) || isVisible(theme.weekVisibility)
+        let claudeVisible = (sessionAvailable && isVisible(theme.sessionVisibility))
+            || isVisible(theme.weekVisibility)
             || (fableAvailable && isVisible(theme.fableVisibility))
         return HStack {
             if claudeVisible, case .stale(let reason) = model.status {
@@ -407,7 +418,8 @@ struct PillView: View {
     /// forever even when Claude data is fresh.
     private var oldestSuccessSeconds: TimeInterval? {
         var dates: [Date] = []
-        if isVisible(theme.sessionVisibility) || isVisible(theme.weekVisibility)
+        if (sessionAvailable && isVisible(theme.sessionVisibility))
+            || isVisible(theme.weekVisibility)
             || (fableAvailable && isVisible(theme.fableVisibility)) {
             guard let d = model.lastSuccess else { return nil }
             dates.append(d)

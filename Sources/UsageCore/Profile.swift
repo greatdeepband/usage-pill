@@ -5,10 +5,13 @@ public struct Profile: Equatable, Sendable {
     /// Server-truth tier (organization.rate_limit_tier). The credential file's
     /// copy can be stale after a plan change — prefer this when present.
     public let rateLimitTier: String?
+    /// Server-truth plan name (organization.plan_display_name), e.g. "Ultra".
+    public let planName: String?
 
-    public init(email: String?, rateLimitTier: String? = nil) {
+    public init(email: String?, rateLimitTier: String? = nil, planName: String? = nil) {
         self.email = email
         self.rateLimitTier = rateLimitTier
+        self.planName = planName
     }
 }
 
@@ -25,7 +28,9 @@ public extension Profile {
         let organization = root["organization"] as? [String: Any]
         let tier = (organization?["rate_limit_tier"] as? String)
             .flatMap { $0.isEmpty ? nil : $0 }
-        return Profile(email: email, rateLimitTier: tier)
+        let planName = (organization?["plan_display_name"] as? String)
+            .flatMap { $0.isEmpty ? nil : $0 }
+        return Profile(email: email, rateLimitTier: tier, planName: planName)
     }
 }
 

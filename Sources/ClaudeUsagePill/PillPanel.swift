@@ -138,8 +138,8 @@ final class PillPanel: NSPanel {
 
     /// Sync row counts from AppDelegate. When collapsed, re-applies the
     /// (possibly changed) compact frame, keeping the top edge fixed.  An
-    /// expanded panel is left alone — the next hover-out collapses it to the
-    /// fresh compact size via setExpanded.
+    /// expanded panel re-applies its expanded size instead: a pinned card
+    /// gets no hover-out to collapse it to the fresh size.
     func applyRowCounts(pinnedClaude: Int, pinnedProviders: Int,
                         expandedClaude: Int, expandedProviders: Int,
                         compactSections: Int, expandedSections: Int, identity: Bool) {
@@ -150,7 +150,10 @@ final class PillPanel: NSPanel {
         self.compactSections = compactSections
         self.expandedSections = expandedSections
         identityEnabled = identity
-        guard !isExpandedNow else { return }
+        guard !isExpandedNow else {
+            setExpanded(true)
+            return
+        }
         let size = compactSize
         guard frame.size != size else { return }
         var f = frame

@@ -223,19 +223,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Sections (Task 18a): the Claude section header counts when ≥1 Claude
     /// row is visible in that mode; each visible provider is its own section.
     private func syncPanelLayout() {
-        // The Fable row exists only while the account reports a Fable window
-        // (same graceful absence as the Credits row) — its visibility counts
-        // only then. The model.$snapshot sink re-syncs when the window
-        // appears/disappears.
-        var claudeVis = [themeStore.sessionVisibility, themeStore.weekVisibility]
+        // The Session and Fable rows exist only while the account reports
+        // their windows (same graceful absence as the Credits row) — their
+        // visibility counts only then. The model.$snapshot sink re-syncs when
+        // a window appears/disappears.
+        var claudeVis = [themeStore.weekVisibility]
+        if model.hasSessionWindow {
+            claudeVis.append(themeStore.sessionVisibility)
+        }
         if model.snapshot?.fable != nil {
             claudeVis.append(themeStore.fableVisibility)
         }
         let rows = providersModel.rows
         let pinnedClaude = claudeVis.filter { $0 == .pinned }.count
         let pinnedProviders = rows.filter { $0.spec.visibility == .pinned }.count
-        let expandedClaude = claudeVis.filter { $0 != .hidden }.count
-            + (model.snapshot?.spend?.enabled == true ? 1 : 0)
+        let visibleClaude = claudeVis.filter { $0 != .hidden }.count
+        // The Credits row lives inside the Claude block: no bar, no block.
+        let expandedClaude = visibleClaude
+            + (visibleClaude > 0 && model.snapshot?.spend?.enabled == true ? 1 : 0)
         panel.applyRowCounts(
             pinnedClaude: pinnedClaude,
             pinnedProviders: pinnedProviders,

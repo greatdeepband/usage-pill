@@ -1,5 +1,22 @@
 # Changelog
 
+## v1.5.0 — 2026-10-30
+
+Ready for the **Ultra plan**. Anthropic renamed Max 20x to Ultra and Max 5x
+to Max, and is removing the 5-hour limit from verified Ultra accounts.
+
+- **The Session bar follows your account.** Once the usage endpoint stops
+  reporting a 5-hour limit, the Session row leaves the pill and the pill
+  shrinks to fit. It comes back by itself if the limit returns, with your
+  Pinned / On Hover / Hidden setting intact.
+  Pro, Max, and not-yet-verified Ultra accounts still have the limit, so
+  they keep the bar exactly as before.
+- **The plan badge uses the name Anthropic reports.** The rename never reached
+  the fields the badge was built from, so Ultra accounts would have stayed
+  "MAX 20×" forever. The badge now reads the plan name from your profile and
+  shows **ULTRA**, or **MAX** on what used to be Max 5x. Older profile
+  responses without a plan name fall back to the previous badge.
+
 ## v1.4.1 — 2026-10-09
 
 The pill now **tells you when Claude Code's login has lapsed** instead of

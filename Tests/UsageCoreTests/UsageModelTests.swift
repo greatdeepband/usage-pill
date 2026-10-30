@@ -383,3 +383,21 @@ private final class CallCounter: @unchecked Sendable {
     #expect(model.status == .ok) // capped window elapsed → recovered without a forced refresh
     #expect(callCount() == 2)
 }
+
+@Test @MainActor func sessionRowFollowsTheReportedWindow() async {
+    let noSession = UsageSnapshot(session: nil, week: UsageWindow(utilization: 38, resetsAt: nil),
+                                  sessionLimitRemoved: true)
+    let model = makeModel(
+        results: [.success(noSession), .success(snapA), .failure(FetchError.network), .success(noSession)],
+        now: { Date(timeIntervalSince1970: 1000) }
+    )
+    #expect(model.hasSessionWindow) // nothing fetched yet: keep the row's placeholder
+    await model.refresh()
+    #expect(!model.hasSessionWindow)
+    await model.refresh()
+    #expect(model.hasSessionWindow)
+    await model.refresh() // a failed poll keeps the last answer
+    #expect(model.hasSessionWindow)
+    await model.refresh()
+    #expect(!model.hasSessionWindow)
+}

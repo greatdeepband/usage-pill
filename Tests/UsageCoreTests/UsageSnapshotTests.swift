@@ -177,3 +177,39 @@ import Testing
     let snap = try UsageSnapshot.decode(from: Data(json.utf8))
     #expect(snap.spend == nil)
 }
+
+// Verified Ultra accounts have no 5-hour limit (2026-10-30). The live shape
+// for such an account is unconfirmed, so both plausible forms are pinned.
+@Test(arguments: [Fixtures.usageResponseSessionNull, Fixtures.usageResponseSessionOmitted])
+func noSessionLimitKeepsEveryOtherBar(json: String) throws {
+    let snap = try UsageSnapshot.decode(from: Data(json.utf8))
+    #expect(snap.session == nil)
+    #expect(snap.sessionLimitRemoved)
+    #expect(snap.week?.utilization == 47)
+    #expect(snap.fable?.utilization == 12)
+}
+
+@Test func idleSessionWindowWithoutResetIsStillAWindow() throws {
+    // Pro and Max keep the limit: an idle window reports 0% and no reset yet,
+    // and must not be mistaken for an account without a session limit.
+    let json = #"{"five_hour":{"utilization":0.0,"resets_at":null}}"#
+    let snap = try UsageSnapshot.decode(from: Data(json.utf8))
+    #expect(snap.session == UsageWindow(utilization: 0, resetsAt: nil))
+    #expect(!snap.sessionLimitRemoved)
+}
+
+@Test(arguments: [
+    #"{"five_hour":null,"limits":[{"kind":"session","percent":0}]}"#, // still listed
+    #"{"five_hour":null,"limits":[]}"#,                               // says nothing
+    #"{"five_hour":null}"#,                                           // older shape
+])
+func emptySessionWindowAloneIsNotARemovedLimit(json: String) throws {
+    let snap = try UsageSnapshot.decode(from: Data(json.utf8))
+    #expect(snap.session == nil)
+    #expect(!snap.sessionLimitRemoved)
+}
+
+@Test func liveResponseWithSessionKeepsTheLimit() throws {
+    let snap = try UsageSnapshot.decode(from: Data(Fixtures.liveUsageResponseWithLimits.utf8))
+    #expect(!snap.sessionLimitRemoved)
+}

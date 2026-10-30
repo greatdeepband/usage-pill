@@ -36,13 +36,17 @@ public struct UsageSnapshot: Equatable, Sendable {
     public let week: UsageWindow?    // "seven_day"
     public let fable: UsageWindow?   // "limits" weekly_scoped, model "Fable"
     public let spend: SpendInfo?     // "spend" block
+    /// The account has no 5-hour limit (verified Ultra accounts don't).
+    public let sessionLimitRemoved: Bool
 
     public init(session: UsageWindow?, week: UsageWindow?,
-                fable: UsageWindow? = nil, spend: SpendInfo? = nil) {
+                fable: UsageWindow? = nil, spend: SpendInfo? = nil,
+                sessionLimitRemoved: Bool = false) {
         self.session = session
         self.week = week
         self.fable = fable
         self.spend = spend
+        self.sessionLimitRemoved = sessionLimitRemoved
     }
 }
 
@@ -56,12 +60,22 @@ public extension UsageSnapshot {
               let root = any as? [String: Any] else {
             throw UsageDecodingError.invalidJSON
         }
+        let session = UsageWindow(json: root["five_hour"])
         return UsageSnapshot(
-            session: UsageWindow(json: root["five_hour"]),
+            session: session,
             week: UsageWindow(json: root["seven_day"]),
             fable: fableWindow(fromLimits: root["limits"]),
-            spend: SpendInfo(json: root["spend"])
+            spend: SpendInfo(json: root["spend"]),
+            sessionLimitRemoved: session == nil && limitsOmitSession(root["limits"])
         )
+    }
+
+    /// An empty `five_hour` alone doesn't prove the limit is gone, so Pro and
+    /// Max can't lose their row to a quiet window: `limits` must also be
+    /// present and list no session entry. No array → false (older shape).
+    internal static func limitsOmitSession(_ json: Any?) -> Bool {
+        guard let entries = json as? [Any], !entries.isEmpty else { return false }
+        return !entries.contains { ($0 as? [String: Any])?["kind"] as? String == "session" }
     }
 
     /// The Fable weekly window lives in the `limits` array, not a top-level

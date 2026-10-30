@@ -51,7 +51,8 @@ final class IdentityModel: ObservableObject {
                 // No profile yet → "MAX"; once it loads → "MAX 20×", then locked.
                 planBadge = PlanBadge.text(
                     subscriptionType: creds.subscriptionType,
-                    rateLimitTier: profile?.rateLimitTier
+                    rateLimitTier: profile?.rateLimitTier,
+                    planName: profile?.planName
                 )
                 if profile != nil { tierConfirmed = true }
             }

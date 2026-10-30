@@ -71,6 +71,13 @@ public final class UsageModel: ObservableObject {
         }
     }
 
+    /// Whether the Session row exists. Verified Ultra accounts have no 5-hour
+    /// limit, so the row goes once a fetch stops reporting the limit, and comes
+    /// back if it returns. Before the first fetch the row keeps its placeholder.
+    public var hasSessionWindow: Bool {
+        snapshot?.sessionLimitRemoved != true
+    }
+
     /// Data is considered old after 5 minutes without a successful fetch.
     public var isDataOld: Bool {
         guard let lastSuccess else { return true }

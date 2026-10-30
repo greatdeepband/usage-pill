@@ -1,4 +1,36 @@
 enum Fixtures {
+    private static let limitsWithoutSession = #"""
+    "seven_day": {
+        "utilization": 47.0,
+        "resets_at": "2026-11-05T19:00:00.207727+00:00"
+    },
+    "limits": [
+        {
+            "kind": "weekly_all",
+            "group": "weekly",
+            "percent": 47,
+            "severity": "normal",
+            "resets_at": "2026-11-05T19:00:00.207727+00:00",
+            "scope": null,
+            "is_active": true
+        },
+        {
+            "kind": "weekly_scoped",
+            "group": "weekly",
+            "percent": 12,
+            "severity": "normal",
+            "resets_at": "2026-11-05T19:00:00+00:00",
+            "scope": { "model": { "id": null, "display_name": "Fable" }, "surface": null },
+            "is_active": false
+        }
+    ]
+    """#
+
+    /// NOT verbatim: the 2026-10-30 Ultra response with the session window
+    /// and its `limits` entry taken out. No lifted account has been captured.
+    static let usageResponseSessionNull = "{ \"five_hour\": null, \(limitsWithoutSession) }"
+    static let usageResponseSessionOmitted = "{ \(limitsWithoutSession) }"
+
     /// Verbatim response from api.anthropic.com/api/oauth/usage on 2026-06-10.
     /// Note: resets_at carries MICROSECOND fractional seconds — the decoder
     /// must not assume 3-digit milliseconds.

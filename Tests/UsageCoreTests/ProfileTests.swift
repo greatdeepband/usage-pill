@@ -41,3 +41,15 @@ import Testing
     #expect(try Profile.decode(from: Data(#"{"account":{"email":"a@b.c"}}"#.utf8)).rateLimitTier == nil)
     #expect(try Profile.decode(from: Data(#"{"organization":{"rate_limit_tier":""}}"#.utf8)).rateLimitTier == nil)
 }
+
+@Test func decodesServerPlanName() throws {
+    // Shape verified by live probe 2026-10-30.
+    let json = #"{"organization":{"rate_limit_tier":"default_claude_max_20x","plan_display_name":"Ultra","plan_display_label":"Ultra plan"}}"#
+    #expect(try Profile.decode(from: Data(json.utf8)).planName == "Ultra")
+}
+
+@Test func missingOrEmptyPlanNameIsNil() throws {
+    #expect(try Profile.decode(from: Data(#"{"organization":{}}"#.utf8)).planName == nil)
+    #expect(try Profile.decode(from: Data(#"{"organization":{"plan_display_name":""}}"#.utf8)).planName == nil)
+    #expect(try Profile.decode(from: Data(#"{"organization":{"plan_display_name":null}}"#.utf8)).planName == nil)
+}

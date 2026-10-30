@@ -451,7 +451,7 @@ struct ClaudeSettingsPage: View {
                     ))
                 }
             }
-            CardFooter(text: "\u{201C}On Hover\u{201D} rows appear only in the hover-expanded card. The Fable row shows only while your account reports a Fable weekly limit.")
+            CardFooter(text: "\u{201C}On Hover\u{201D} rows appear only in the hover-expanded card. The Session row shows only while your plan has a 5-hour limit, and the Fable row only while your account reports a Fable weekly limit.")
             SettingsCard {
                 Button {
                     confirmRemove = true
